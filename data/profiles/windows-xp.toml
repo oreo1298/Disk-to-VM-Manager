@@ -1,0 +1,38 @@
+id = "windows-xp"
+name = "Windows XP / Server 2003"
+priority = 30
+
+[match]
+family = "windows"
+version_min = "5.1"
+version_max = "5.2.99"
+
+[hardware]
+machine = "pc"
+cpu_model = "host"
+cpus = 2
+max_cpus = 2
+memory_mib = 1024
+max_memory_mib = 3584         # 32-bit editions
+firmware = "bios"
+rtc = "localtime"
+disk_bus = "ide"
+nic = "rtl8139"
+display = "cirrus-vga"
+sound = "AC97"
+usb = "piix3-usb-uhci"
+pointer = "usb-tablet"
+cdrom_bus = "ide"
+hpet = false
+agent = false
+vdagent = false
+
+[create]
+disk_size = "20G"
+
+[patches]
+list = ["windows.hibernation", "windows.storage.mergeide", "windows.hal_check",
+        "windows.disable_services", "windows.hostile_software"]
+
+[notes]
+list = ["Windows XP and Server 2003 may need to be re-activated after moving to new hardware; Rehome does not change activation."]

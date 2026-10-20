@@ -1,0 +1,38 @@
+id = "dos"
+name = "DOS (MS-DOS, PC DOS, DR-DOS, FreeDOS) and Windows 3.x"
+priority = 10
+
+[match]
+family = "dos"
+
+[hardware]
+machine = "pc"
+cpu_model = "pentium"
+cpus = 1
+max_cpus = 1
+memory_mib = 32
+max_memory_mib = 64          # HIMEM.SYS of MS-DOS 6.x handles up to 64 MiB reliably
+firmware = "bios"
+rtc = "localtime"
+disk_bus = "ide"
+nic = "ne2k_isa"             # NE2000 packet drivers ship with most DOS network stacks
+display = "cirrus-vga"       # Windows 3.1 has a Cirrus driver; text mode is plain VGA
+sound = "sb16"
+usb = "none"
+pointer = "ps2"
+cdrom_bus = "ide"
+hpet = false
+agent = false
+vdagent = false
+
+[create]
+disk_size = "2G"             # FAT16 tops out at 2 GiB
+
+[patches]
+list = ["dos.report"]
+
+[notes]
+list = [
+  "DOS has no power management: use Turn Off after shutting down programs.",
+  "DOS never idles the CPU, so one host core stays busy while the VM runs.",
+]

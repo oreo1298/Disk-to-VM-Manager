@@ -1,0 +1,27 @@
+id = "linux-legacy"
+name = "Linux (older than 2.6.25, no virtio)"
+priority = 25
+
+[match]
+family = "linux"
+kernel_max = "2.6.24.99"
+
+[hardware]
+machine = "pc"
+cpu_model = "host"
+cpus = 1
+memory_mib = 1024
+firmware = "bios"
+rtc = "utc"
+disk_bus = "ide"
+nic = "e1000"
+display = "VGA"
+sound = "AC97"
+usb = "piix3-usb-uhci"
+pointer = "usb-tablet"
+cdrom_bus = "ide"
+agent = false
+vdagent = false
+
+[patches]
+list = ["linux.fstab", "linux.bootloader", "linux.gpu_driver", "linux.rtc"]

@@ -1,0 +1,35 @@
+id = "bsd"
+name = "FreeBSD / NetBSD / OpenBSD / DragonFly"
+priority = 20
+
+[match]
+family = "bsd"
+
+[hardware]
+machine = "q35"
+cpu_model = "host"
+cpus = 2
+memory_mib = 2048
+firmware = "auto"
+rtc = "utc"
+disk_bus = "auto"             # BSD device names follow the controller (ada/nda/vtbd), so match it
+nic = "e1000"
+display = "VGA"
+sound = "ich9-intel-hda"
+usb = "qemu-xhci"
+pointer = "usb-tablet"
+cdrom_bus = "sata"
+agent = false
+vdagent = false
+
+[paravirt]
+nic = "virtio-net-pci"
+
+[create]
+disk_size = "32G"
+firmware = "uefi"
+disk_bus = "virtio"
+nic = "virtio-net-pci"
+
+[patches]
+list = ["bsd.report"]

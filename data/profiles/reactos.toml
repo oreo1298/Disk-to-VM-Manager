@@ -1,0 +1,32 @@
+id = "reactos"
+name = "ReactOS"
+priority = 45
+
+[match]
+family = "windows"
+distro = "reactos"
+
+[hardware]
+machine = "pc"
+cpu_model = "host"
+cpus = 1
+memory_mib = 1024
+max_memory_mib = 3072
+firmware = "bios"
+rtc = "localtime"
+disk_bus = "ide"
+nic = "pcnet"
+display = "VGA"
+sound = "AC97"
+usb = "none"
+pointer = "ps2"
+cdrom_bus = "ide"
+hpet = false
+agent = false
+vdagent = false
+
+[create]
+disk_size = "8G"
+
+[patches]
+list = []

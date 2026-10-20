@@ -1,0 +1,43 @@
+id = "windows-modern"
+name = "Windows 8 / 8.1 / 10 / Server 2012-2025"
+priority = 30
+
+[match]
+family = "windows"
+version_min = "6.2"
+
+[hardware]
+machine = "q35"
+cpu_model = "host"
+cpus = 4
+memory_mib = 4096
+firmware = "auto"
+rtc = "localtime"
+hyperv = true
+hpet = false
+disk_bus = "auto"             # SATA, or NVMe when the original was NVMe
+nic = "e1000e"
+display = "VGA"
+sound = "ich9-intel-hda"
+usb = "qemu-xhci"
+pointer = "usb-tablet"
+cdrom_bus = "sata"
+agent = true
+vdagent = true
+
+[paravirt]
+disk_bus = "virtio"
+nic = "virtio-net-pci"
+display = "virtio-vga"
+
+[create]
+disk_size = "80G"
+firmware = "uefi"
+disk_bus = "sata"
+
+[patches]
+list = ["windows.hibernation", "windows.storage.boot_drivers", "windows.disable_services",
+        "windows.hostile_software", "windows.virt_v2v"]
+
+[notes]
+list = ["Windows may ask to be re-activated because the hardware changed."]

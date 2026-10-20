@@ -1,0 +1,43 @@
+id = "windows-vista-7"
+name = "Windows Vista / 7 / Server 2008 (R2)"
+priority = 30
+
+[match]
+family = "windows"
+version_min = "6.0"
+version_max = "6.1.99"
+
+[hardware]
+machine = "q35"
+cpu_model = "host"
+cpus = 2
+memory_mib = 4096
+firmware = "auto"
+rtc = "localtime"
+hyperv = true
+hpet = false
+disk_bus = "sata"             # msahci is built in; Rehome makes it a boot driver
+nic = "e1000"                 # Intel PRO/1000 MT driver is built in
+display = "VGA"
+sound = "ich9-intel-hda"
+usb = "ich9-usb-ehci1"        # no built-in xHCI driver before Windows 8
+pointer = "usb-tablet"
+cdrom_bus = "sata"
+agent = true
+vdagent = true
+
+[paravirt]
+disk_bus = "virtio"
+nic = "virtio-net-pci"
+display = "qxl-vga"
+
+[create]
+disk_size = "64G"
+firmware = "bios"
+
+[patches]
+list = ["windows.hibernation", "windows.storage.boot_drivers", "windows.disable_services",
+        "windows.hostile_software", "windows.virt_v2v"]
+
+[notes]
+list = ["Windows may ask to be re-activated because the hardware changed."]

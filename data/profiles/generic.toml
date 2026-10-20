@@ -1,0 +1,31 @@
+id = "generic"
+name = "Unknown operating system"
+priority = 0
+
+[match]
+
+[hardware]
+# Conservative PC hardware almost every x86 OS has drivers for.
+machine = "pc"
+cpu_model = "host"
+cpus = 2
+memory_mib = 2048
+firmware = "auto"
+rtc = "utc"
+disk_bus = "auto"
+nic = "e1000"
+display = "VGA"
+sound = "AC97"
+usb = "piix3-usb-uhci"
+pointer = "usb-tablet"
+cdrom_bus = "ide"
+agent = false
+vdagent = false
+
+[create]
+disk_size = "32G"
+firmware = "bios"
+disk_bus = "ide"
+
+[notes]
+list = ["Rehome could not identify this system, so it uses widely compatible hardware."]

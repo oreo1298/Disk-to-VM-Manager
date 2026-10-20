@@ -1,0 +1,42 @@
+id = "win98"
+name = "Windows 98 / 98 SE / Me"
+priority = 20
+
+[match]
+family = "win9x"
+distro = ["win98", "winme"]
+
+[hardware]
+machine = "pc"
+cpu_model = "pentium3"
+cpus = 1
+max_cpus = 1
+memory_mib = 256
+max_memory_mib = 512          # vcache/VxD problems above 512 MiB
+firmware = "bios"
+rtc = "localtime"
+disk_bus = "ide"
+nic = "pcnet"
+display = "cirrus-vga"
+sound = "sb16"
+usb = "piix3-usb-uhci"
+pointer = "ps2"
+cdrom_bus = "ide"
+hpet = false
+agent = false
+vdagent = false
+accel = "tcg"
+accel_reason = "Windows 98/Me can fail with \"Windows protection error\" (NDIS.VXD) on fast CPUs; emulation avoids it. You can switch to KVM in the settings if your install is patched."
+cpu_quota_pct = 100
+
+[create]
+disk_size = "8G"
+
+[patches]
+list = ["win9x.report", "win9x.ram_limit", "win9x.vcache_limit"]
+
+[notes]
+list = [
+  "Windows 98/Me never halt an idle CPU, so the VM keeps one host core busy. An idle utility such as AmnHLT can be installed inside the guest to fix this.",
+  "More than 512 MiB of RAM makes Windows 98/Me unstable; Rehome limits the VM to 512 MiB.",
+]

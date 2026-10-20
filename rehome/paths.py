@@ -50,8 +50,11 @@ def downloads_dir() -> Path:
 
 def runtime_dir() -> Path:
     """Per-boot runtime directory for sockets and pidfiles."""
+    override = os.environ.get("REHOME_RUNTIME_DIR")
     base = os.environ.get("REHOME_HOME")
-    if base:
+    if override:
+        p = Path(override)
+    elif base:
         p = Path(base) / "run"
     else:
         xdg = os.environ.get("XDG_RUNTIME_DIR")
@@ -63,8 +66,17 @@ def runtime_dir() -> Path:
     return p
 
 
+# Unix socket paths are limited to 107 bytes; our longest name is 20 chars.
+MAX_RUNTIME_DIR_LEN = 86
+
+
 def vm_runtime_dir(vm_id: str) -> Path:
-    p = runtime_dir() / "vms" / vm_id
+    p = runtime_dir() / "vms" / vm_id.replace("-", "")
+    if len(str(p)) > MAX_RUNTIME_DIR_LEN:
+        from rehome.errors import RehomeError
+        raise RehomeError(
+            f"The runtime directory path {p} is too long for the VM's control sockets.",
+            fix="Set XDG_RUNTIME_DIR (or REHOME_RUNTIME_DIR) to a shorter path.")
     p.mkdir(parents=True, exist_ok=True, mode=0o700)
     return p
 

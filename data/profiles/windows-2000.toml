@@ -1,0 +1,35 @@
+id = "windows-2000"
+name = "Windows 2000"
+priority = 30
+
+[match]
+family = "windows"
+version_min = "5.0"
+version_max = "5.0.99"
+
+[hardware]
+machine = "pc"
+cpu_model = "host"
+cpus = 1
+max_cpus = 2
+memory_mib = 512
+max_memory_mib = 3584
+firmware = "bios"
+rtc = "localtime"
+disk_bus = "ide"              # PIIX IDE: atapi/intelide drivers are built in
+nic = "rtl8139"               # built-in Realtek RTL8139 driver
+display = "cirrus-vga"        # built-in Cirrus driver gives 1024x768 in true colour
+sound = "AC97"
+usb = "piix3-usb-uhci"
+pointer = "usb-tablet"
+cdrom_bus = "ide"
+hpet = false
+agent = false
+vdagent = false
+
+[patches]
+list = ["windows.hibernation", "windows.storage.mergeide", "windows.hal_check",
+        "windows.disable_services", "windows.hostile_software"]
+
+[notes]
+list = ["Windows may ask to be re-activated because the hardware changed."]

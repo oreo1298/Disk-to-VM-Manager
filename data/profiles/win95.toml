@@ -1,0 +1,42 @@
+id = "win95"
+name = "Windows 95"
+priority = 20
+
+[match]
+family = "win9x"
+distro = "win95"
+
+[hardware]
+machine = "pc"
+cpu_model = "pentium2"
+cpus = 1
+max_cpus = 1
+memory_mib = 128
+max_memory_mib = 480          # 95 fails with more than ~480 MiB without patches
+firmware = "bios"
+rtc = "localtime"
+disk_bus = "ide"
+nic = "pcnet"                 # "AMD PCNET Family" driver is built into Windows 95 OSR2
+display = "cirrus-vga"        # built-in Cirrus Logic 5446 driver
+sound = "sb16"                # built-in Sound Blaster 16 driver
+usb = "none"
+pointer = "ps2"
+cdrom_bus = "ide"
+hpet = false
+agent = false
+vdagent = false
+accel = "tcg"
+accel_reason = "Windows 95 crashes with \"Windows protection error\" on CPUs faster than about 2 GHz; emulation keeps it within the speed it can handle."
+cpu_quota_pct = 100           # never idles: cap it at one host core
+
+[create]
+disk_size = "2G"
+
+[patches]
+list = ["win9x.report", "win9x.ram_limit"]
+
+[notes]
+list = [
+  "Windows 95 never halts an idle CPU, so the VM keeps one host core busy. An idle utility such as AmnHLT can be installed inside the guest to fix this.",
+  "The mouse needs to be captured (click into the console; press Ctrl+Alt to release).",
+]

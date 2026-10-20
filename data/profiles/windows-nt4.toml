@@ -1,0 +1,29 @@
+id = "windows-nt4"
+name = "Windows NT 4.0"
+priority = 25
+
+[match]
+family = "windows"
+version_max = "4.99"
+
+[hardware]
+machine = "pc"
+cpu_model = "pentium3"
+cpus = 1
+memory_mib = 256
+max_memory_mib = 2048
+firmware = "bios"
+rtc = "localtime"
+disk_bus = "ide"
+nic = "pcnet"
+display = "cirrus-vga"
+sound = "sb16"
+usb = "none"
+pointer = "ps2"
+cdrom_bus = "ide"
+hpet = false
+agent = false
+vdagent = false
+
+[patches]
+list = ["windows.hibernation", "windows.storage.mergeide", "windows.disable_services"]

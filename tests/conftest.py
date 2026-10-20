@@ -14,8 +14,14 @@ def isolated_home(tmp_path, monkeypatch):
     home = tmp_path / "rehome-home"
     home.mkdir()
     monkeypatch.setenv("REHOME_HOME", str(home))
+    # Socket paths must stay short (108-byte limit), so use a short /tmp dir.
+    import shutil
+    import tempfile
+    run = tempfile.mkdtemp(prefix="rh", dir="/tmp")
+    monkeypatch.setenv("REHOME_RUNTIME_DIR", run)
     monkeypatch.setenv("REHOME_DATA_DIR", str(ROOT / "data"))
     yield home
+    shutil.rmtree(run, ignore_errors=True)
 
 
 def pytest_configure(config):

@@ -1,0 +1,12 @@
+id = "macos"
+name = "macOS"
+priority = 50
+supported = false
+
+[match]
+family = "macos"
+
+[hardware]
+
+[notes]
+list = ["macOS was detected. Rehome does not run macOS as a VM: Apple's license only allows macOS on Apple hardware."]

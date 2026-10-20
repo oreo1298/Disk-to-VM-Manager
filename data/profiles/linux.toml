@@ -1,0 +1,32 @@
+id = "linux"
+name = "Linux"
+priority = 20
+
+[match]
+family = "linux"
+
+[hardware]
+machine = "q35"
+cpu_model = "host"
+cpus = 2
+memory_mib = 4096
+firmware = "auto"
+rtc = "utc"
+disk_bus = "auto"             # virtio when the initramfs has (or gets) virtio drivers
+nic = "virtio-net-pci"
+display = "virtio-vga"
+sound = "ich9-intel-hda"
+usb = "qemu-xhci"
+pointer = "usb-tablet"
+cdrom_bus = "sata"
+agent = true
+vdagent = true
+
+[create]
+disk_size = "40G"
+firmware = "uefi"
+disk_bus = "virtio"
+
+[patches]
+list = ["linux.fstab", "linux.bootloader", "linux.initramfs", "linux.gpu_driver",
+        "linux.network", "linux.hostile_software", "linux.rtc"]

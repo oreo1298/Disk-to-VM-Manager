@@ -1,0 +1,101 @@
+# Windows storage drivers, hypervisor tools and hardware-specific software.
+# Used to identify the original storage controller and to decide what to
+# enable or disable when moving an installation into a VM.
+
+# Storage drivers and the controller class they serve.
+[storage]
+# built-in controller drivers Rehome can switch to
+atapi    = { bus = "ide",  builtin = true,  desc = "ATAPI/IDE port driver (2000/XP)" }
+intelide = { bus = "ide",  builtin = true,  desc = "Intel IDE controller" }
+pciide   = { bus = "ide",  builtin = true,  desc = "Generic PCI IDE controller" }
+pciidex  = { bus = "ide",  builtin = true,  desc = "PCI IDE bus driver" }
+msahci   = { bus = "sata", builtin = true,  desc = "Microsoft AHCI (Vista/7)" }
+storahci = { bus = "sata", builtin = true,  desc = "Microsoft AHCI (Windows 8 and later)" }
+stornvme = { bus = "nvme", builtin = true,  desc = "Microsoft NVMe (Windows 8.1 and later)" }
+# vendor drivers (present on many physical machines)
+iaStorV    = { bus = "sata", builtin = false, desc = "Intel Rapid Storage (Vista/7 era)" }
+iaStorA    = { bus = "sata", builtin = false, desc = "Intel Rapid Storage Technology" }
+iaStorAC   = { bus = "sata", builtin = false, desc = "Intel Rapid Storage Technology" }
+iaStorAVC  = { bus = "sata", builtin = false, desc = "Intel RST (VMD)" }
+iaStorVD   = { bus = "nvme", builtin = false, desc = "Intel RST VMD" }
+iaVROC     = { bus = "nvme", builtin = false, desc = "Intel VROC" }
+amd_sata   = { bus = "sata", builtin = false, desc = "AMD SATA" }
+amdsata    = { bus = "sata", builtin = false, desc = "AMD SATA" }
+amdsbs     = { bus = "sata", builtin = false, desc = "AMD RAID" }
+rcraid     = { bus = "sata", builtin = false, desc = "AMD RAIDXpert" }
+nvraid     = { bus = "sata", builtin = false, desc = "NVIDIA RAID" }
+nvstor     = { bus = "sata", builtin = false, desc = "NVIDIA storage" }
+secnvme    = { bus = "nvme", builtin = false, desc = "Samsung NVMe" }
+samsungnvme = { bus = "nvme", builtin = false, desc = "Samsung NVMe" }
+LSI_SAS    = { bus = "scsi", builtin = true,  desc = "LSI SAS (common in VMware VMs)" }
+LSI_SCSI   = { bus = "scsi", builtin = true,  desc = "LSI SCSI (VMware)" }
+LSI_SAS2i  = { bus = "scsi", builtin = true,  desc = "LSI SAS2" }
+megasas    = { bus = "scsi", builtin = true,  desc = "MegaRAID SAS" }
+pvscsi     = { bus = "scsi", builtin = false, desc = "VMware paravirtual SCSI" }
+storvsc    = { bus = "scsi", builtin = true,  desc = "Hyper-V synthetic storage" }
+viostor    = { bus = "virtio", builtin = false, desc = "VirtIO block (virtio-win)" }
+vioscsi    = { bus = "virtio", builtin = false, desc = "VirtIO SCSI (virtio-win)" }
+xenvbd     = { bus = "xen",  builtin = false, desc = "Xen PV storage" }
+
+# Software that belongs to another hypervisor or to the old hardware.
+# action: "disable" sets Start=4 (the service stays installed so it can be
+# removed properly from inside Windows later).
+[[hostile]]
+name = "VMware Tools"
+services = ["VMTools", "vmci", "vmhgfs", "vm3dmp", "vm3dservice", "vmmouse", "vmusbmouse", "vmrawdsk", "VGAuthService", "vmvss", "vsock"]
+action = "disable"
+
+[[hostile]]
+name = "VirtualBox Guest Additions"
+services = ["VBoxService", "VBoxGuest", "VBoxSF", "VBoxMouse", "VBoxWddm", "VBoxVideo"]
+action = "disable"
+
+[[hostile]]
+name = "Parallels Tools"
+services = ["prl_tools", "prl_fs", "prl_mouf", "prl_pv32", "prl_pv64", "prl_memdev", "prl_eth5", "prl_tg"]
+action = "disable"
+
+[[hostile]]
+name = "Xen PV drivers"
+services = ["xenbus", "xenfilt", "xeniface", "xennet", "xenvif", "xenvbd"]
+action = "disable"
+
+[[hostile]]
+name = "Intel processor power management (crashes on virtual CPUs)"
+services = ["intelppm", "amdppm", "processr"]
+action = "disable"
+
+[[hostile]]
+name = "Intel Rapid Storage / Optane management"
+services = ["IAStorDataMgrSvc", "RstMwService", "iaStorAfsService", "OptaneMemoryService"]
+action = "disable"
+
+[[hostile]]
+name = "Vendor RAID management"
+services = ["RAIDXpert2", "rcbottom", "AMDRAIDXpert"]
+action = "disable"
+
+[[hostile]]
+name = "OEM hardware services"
+services = ["DellDataVault", "DellTechHub", "DDVDataCollector", "DDVRulesProcessor", "HPAppHelperCap", "HPDiagsCap", "HPSysInfoCap", "LenovoVantageService", "ImControllerService", "ASUSOptimization", "AsusCertService"]
+action = "disable"
+
+[[hostile]]
+name = "Touchpad and keyboard filters"
+services = ["SynTP", "SynRMIHID", "ETDService", "SmbDrv", "ApHidFilter"]
+action = "disable"
+
+# Device IDs of the controllers QEMU emulates (for CriticalDeviceDatabase on
+# Windows 2000/XP/2003 — the "MergeIDE" fix).
+[mergeide]
+# CDD key name -> (service, class GUID)
+"primary_ide_channel" = ["atapi", "{4D36E96A-E325-11CE-BFC1-08002BE10318}"]
+"secondary_ide_channel" = ["atapi", "{4D36E96A-E325-11CE-BFC1-08002BE10318}"]
+"pci#ven_8086&dev_7010" = ["intelide", "{4D36E96A-E325-11CE-BFC1-08002BE10318}"]  # PIIX3 (QEMU pc)
+"pci#ven_8086&dev_7111" = ["intelide", "{4D36E96A-E325-11CE-BFC1-08002BE10318}"]  # PIIX4
+"pci#ven_8086&dev_7113" = ["intelide", "{4D36E96A-E325-11CE-BFC1-08002BE10318}"]
+"pci#ven_8086&dev_1230" = ["intelide", "{4D36E96A-E325-11CE-BFC1-08002BE10318}"]  # PIIX
+"pci#ven_8086&dev_2411" = ["intelide", "{4D36E96A-E325-11CE-BFC1-08002BE10318}"]  # ICH
+"pci#ven_8086&dev_24db" = ["intelide", "{4D36E96A-E325-11CE-BFC1-08002BE10318}"]  # ICH5
+"pci#ven_8086&dev_27c0" = ["intelide", "{4D36E96A-E325-11CE-BFC1-08002BE10318}"]  # ICH7
+"pci#cc_0101" = ["pciide", "{4D36E96A-E325-11CE-BFC1-08002BE10318}"]

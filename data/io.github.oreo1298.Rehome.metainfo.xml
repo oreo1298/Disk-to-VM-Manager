@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.oreo1298.Rehome</id>
+  <name>Rehome</name>
+  <summary>Turn installed operating systems into virtual machines</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <description>
+    <p>
+      Rehome gives an installed operating system a new home as a QEMU/KVM virtual machine.
+      Point it at a physical disk or a disk image and it identifies the system, applies the
+      fixes it needs to boot on virtual hardware, and starts it — without ever writing to the
+      original disk.
+    </p>
+    <p>It also creates and manages virtual machines from scratch:</p>
+    <ul>
+      <li>Imports Windows (from DOS and Windows 95 to Windows 11 and Server 2025), Linux and the BSDs</li>
+      <li>Supports physical disks, raw, E01, VHD/VHDX, VMDK, VDI and qcow2 images</li>
+      <li>Embedded console with clipboard sharing, dynamic resolution and USB redirection</li>
+      <li>Checkpoints, cloning, export and import</li>
+      <li>Follows your desktop's light/dark style and accent colour</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">io.github.oreo1298.Rehome.desktop</launchable>
+  <url type="homepage">https://github.com/oreo1298/Disk-to-VM-Manager</url>
+  <url type="bugtracker">https://github.com/oreo1298/Disk-to-VM-Manager/issues</url>
+  <developer id="io.github.oreo1298">
+    <name>Rehome contributors</name>
+  </developer>
+  <content_rating type="oars-1.1"/>
+  <supports>
+    <control>keyboard</control>
+    <control>pointing</control>
+  </supports>
+  <releases>
+    <release version="0.1.0" date="2026-10-20"/>
+  </releases>
+</component>

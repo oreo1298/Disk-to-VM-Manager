@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Rehome
+GenericName=Virtual Machine Manager
+Comment=Turn installed operating systems into virtual machines, and create and manage VMs
+Exec=@BINDIR@/rehome
+Icon=io.github.oreo1298.Rehome
+Terminal=false
+Categories=System;Emulator;
+Keywords=VM;virtual machine;QEMU;KVM;P2V;disk;import;Windows;Linux;
+StartupNotify=true
+StartupWMClass=io.github.oreo1298.Rehome
+SingleMainWindow=true

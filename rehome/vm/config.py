@@ -145,6 +145,7 @@ class Machine:
     firmware: str = "bios"
     tpm: str = "none"
     rtc: str = "utc"
+    rtc_catchup: bool = False    # re-inject lost RTC ticks (Windows under KVM)
     hyperv: bool = False         # Hyper-V enlightenments for Windows guests (KVM only)
     hpet: bool = True
     acpi: bool = True
@@ -200,6 +201,15 @@ class ImportInfo:
 
 
 @dataclass
+class DirectBoot:
+    """Boot a kernel/initrd directly (used by unattended Linux installs)."""
+    kernel: str = ""
+    initrd: str = ""
+    append: str = ""
+    once: bool = True            # removed automatically after the next start
+
+
+@dataclass
 class Passthrough:
     """Reserved for GPU/PCI pass-through (not implemented in v1)."""
     pci: list[str] = field(default_factory=list)   # host PCI addresses, e.g. "0000:01:00.0"
@@ -228,6 +238,7 @@ class VMConfig:
     snapshots: list[Snapshot] = field(default_factory=list)
     current_snapshot: str = ""
     import_info: ImportInfo | None = None
+    direct_boot: DirectBoot | None = None
     passthrough: Passthrough = field(default_factory=Passthrough)
 
     # Set by the library when loaded; not persisted.

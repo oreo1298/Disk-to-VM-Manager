@@ -124,6 +124,9 @@ def inventory() -> list[Tool]:
 
 def helper_installed() -> str | None:
     """Path of the installed privileged helper, if any."""
+    env = os.environ.get("REHOME_HELPER_PATH")
+    if env and os.path.isfile(env):
+        return env
     for p in ("/usr/libexec/rehome/rehome-helper", "/usr/lib/rehome/rehome-helper",
               "/usr/local/libexec/rehome/rehome-helper"):
         if os.path.isfile(p):

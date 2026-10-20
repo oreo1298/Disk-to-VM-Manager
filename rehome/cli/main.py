@@ -17,7 +17,7 @@ from rehome.errors import RehomeError
 
 COMMAND_MODULES = [
     "doctor", "vm", "create", "snapshot", "sources", "inspect", "import_",
-    "patch", "usb", "media", "misc",
+    "patch", "usb", "media", "misc", "update",
 ]
 
 
@@ -62,6 +62,14 @@ def main(argv: list[str] | None = None) -> int:
     except KeyboardInterrupt:
         print("\nInterrupted.", file=sys.stderr)
         return 130
+    except Exception as e:  # noqa: BLE001 - last-resort reporting
+        import traceback
+        from rehome.cli.output import error
+        error(RehomeError(f"Something unexpected went wrong: {e}",
+                          fix="Please report this with the technical details "
+                              "(https://github.com/oreo1298/Disk-to-VM-Manager/issues).",
+                          details=traceback.format_exc()))
+        return 70
 
 
 def launch_gui() -> int:

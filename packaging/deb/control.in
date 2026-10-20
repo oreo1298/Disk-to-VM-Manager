@@ -1,0 +1,18 @@
+Package: rehome
+Version: @VERSION@
+Architecture: all
+Maintainer: Rehome contributors <https://github.com/oreo1298/Disk-to-VM-Manager>
+Installed-Size: @INSTALLED_SIZE@
+Depends: @DEPENDS@
+Recommends: @RECOMMENDS@
+Section: admin
+Priority: optional
+Homepage: https://github.com/oreo1298/Disk-to-VM-Manager
+Description: Turn installed operating systems into QEMU/KVM virtual machines
+ Rehome gives an installed operating system a new home as a QEMU/KVM virtual
+ machine. Point it at a physical disk or a disk image and it identifies the
+ system, applies the fixes it needs to boot on virtual hardware, and starts it,
+ without ever writing to the original disk.
+ .
+ It also creates and manages virtual machines from scratch, with an embedded
+ console, checkpoints, cloning, export and import.

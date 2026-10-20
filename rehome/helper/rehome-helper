@@ -1,0 +1,292 @@
+#!/usr/bin/python3 -I
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""rehome-helper — Rehome's minimal privileged helper.
+
+Run through pkexec only. It never writes to any disk. Verbs:
+
+  open-disk DEVICE     Open a block device READ-ONLY and EXCLUSIVELY (O_EXCL)
+                       after refusing anything the host is using, and pass
+                       the file descriptor back.
+  open-usb BUS DEVNUM  Open a USB device node for pass-through and pass the
+                       file descriptor back (hubs are refused).
+  smart DEVICE         Print the disk's SMART health as JSON (smartctl).
+
+The reply channel is the socket on stdin (pkexec closes fds above 2); the
+caller creates a socketpair and passes one end as our stdin. Results and
+errors are JSON lines on stdout.
+
+This file deliberately imports only the standard library and nothing from
+Rehome, so it can be audited on its own.
+"""
+
+import json
+import os
+import re
+import socket
+import stat
+import subprocess
+import sys
+import syslog
+
+SYS_BLOCK = "/sys/class/block"
+SMARTCTL_PATHS = ("/usr/sbin/smartctl", "/usr/bin/smartctl", "/sbin/smartctl")
+
+
+class Refused(Exception):
+    def __init__(self, code, message):
+        super().__init__(message)
+        self.code = code
+
+
+def reply(obj, fd=None):
+    data = (json.dumps(obj) + "\n").encode()
+    if fd is not None:
+        sock = socket.socket(fileno=os.dup(0))
+        try:
+            socket.send_fds(sock, [data], [fd])
+        finally:
+            sock.close()
+    else:
+        sys.stdout.write(data.decode())
+        sys.stdout.flush()
+
+
+def audit(msg):
+    uid = os.environ.get("PKEXEC_UID", "?")
+    syslog.openlog("rehome-helper", syslog.LOG_PID, syslog.LOG_AUTHPRIV)
+    syslog.syslog(syslog.LOG_NOTICE, f"uid {uid}: {msg}")
+
+
+# --- block device analysis ------------------------------------------------------
+
+def dev_name_of(path):
+    st = os.stat(path)
+    if not stat.S_ISBLK(st.st_mode):
+        raise Refused("not-block", f"{path} is not a block device.")
+    major, minor = os.major(st.st_rdev), os.minor(st.st_rdev)
+    link = os.path.realpath(f"/sys/dev/block/{major}:{minor}")
+    return os.path.basename(link), f"{major}:{minor}", link
+
+
+def whole_disk(name):
+    """sda1 -> sda; nvme0n1p2 -> nvme0n1; sda -> sda."""
+    sysdir = os.path.realpath(os.path.join(SYS_BLOCK, name))
+    if os.path.exists(os.path.join(sysdir, "partition")):
+        return os.path.basename(os.path.dirname(sysdir))
+    return name
+
+
+def partitions(disk):
+    base = os.path.realpath(os.path.join(SYS_BLOCK, disk))
+    out = []
+    for entry in os.listdir(base):
+        if entry.startswith(disk) and os.path.exists(os.path.join(base, entry, "partition")):
+            out.append(entry)
+    return out
+
+
+def holders(name):
+    d = os.path.join(SYS_BLOCK, name, "holders")
+    try:
+        return os.listdir(d)
+    except OSError:
+        return []
+
+
+def slaves(name):
+    d = os.path.join(SYS_BLOCK, name, "slaves")
+    try:
+        return os.listdir(d)
+    except OSError:
+        return []
+
+
+def lower_devices(name, seen=None):
+    """Every block device ``name`` is built on (dm/md/loop chains), plus itself."""
+    seen = set() if seen is None else seen
+    if name in seen:
+        return seen
+    seen.add(name)
+    for s in slaves(name):
+        lower_devices(s, seen)
+    disk = whole_disk(name)
+    seen.add(disk)
+    backing = os.path.join(SYS_BLOCK, name, "loop", "backing_file")
+    if os.path.exists(backing):
+        try:
+            bf = open(backing).read().strip()
+            st = os.stat(bf)
+            n = os.path.basename(os.path.realpath(
+                f"/sys/dev/block/{os.major(st.st_dev)}:{os.minor(st.st_dev)}"))
+            lower_devices(n, seen)
+        except OSError:
+            pass
+    return seen
+
+
+def devices_in_use():
+    """Block devices backing mounted filesystems or active swap."""
+    used = {}
+    with open("/proc/self/mountinfo") as f:
+        for line in f:
+            parts = line.split()
+            mountpoint = parts[4].encode().decode("unicode_escape")
+            majmin = parts[2]
+            if majmin.startswith("0:"):
+                # Btrfs and some FUSE filesystems report anonymous devices;
+                # resolve the source device instead.
+                sep = parts.index("-")
+                src = parts[sep + 2]
+                if src.startswith("/dev/") and os.path.exists(src):
+                    try:
+                        _, majmin, _ = dev_name_of(src)
+                    except (Refused, OSError):
+                        continue
+                else:
+                    continue
+            link = f"/sys/dev/block/{majmin}"
+            if not os.path.exists(link):
+                continue
+            name = os.path.basename(os.path.realpath(link))
+            for dev in lower_devices(name):
+                used.setdefault(dev, mountpoint)
+    try:
+        with open("/proc/swaps") as f:
+            next(f)
+            for line in f:
+                src = line.split()[0]
+                if src.startswith("/dev/") and os.path.exists(src):
+                    try:
+                        name, _, _ = dev_name_of(src)
+                    except (Refused, OSError):
+                        continue
+                    for dev in lower_devices(name):
+                        used.setdefault(dev, "[swap]")
+    except OSError:
+        pass
+    return used
+
+
+def check_disk(path):
+    if not path.startswith("/dev/") or ".." in path.split("/"):
+        raise Refused("bad-path", "Only devices under /dev can be opened.")
+    real = os.path.realpath(path)
+    if not real.startswith("/dev/"):
+        raise Refused("bad-path", "Only devices under /dev can be opened.")
+    name, majmin, _ = dev_name_of(real)
+    disk = whole_disk(name)
+    family = {disk, name, *partitions(disk)}
+    for member in list(family):
+        for h in holders(member):
+            family.add(h)
+    used = devices_in_use()
+    for member in sorted(family):
+        if member in used:
+            where = used[member]
+            if where in ("/", "/boot", "/boot/efi", "/efi", "/usr", "/var", "/home", "[swap]"):
+                raise Refused("host-disk",
+                              f"{real} holds this computer's running system ({where}).")
+            raise Refused("mounted", f"{real} is in use: /dev/{member} is mounted at {where}.")
+    for member in sorted(family):
+        if holders(member):
+            raise Refused("in-use", f"/dev/{member} is in use by "
+                          f"{', '.join(holders(member))} (RAID, LVM or encryption).")
+    return real, name, disk
+
+
+# --- verbs ----------------------------------------------------------------------------
+
+def open_disk(path):
+    real, name, _disk = check_disk(path)
+    try:
+        # O_EXCL on a block device: the kernel refuses if anything has the
+        # device (or, for a whole disk, any of its partitions) claimed, and
+        # nothing can mount it while we (and later QEMU) hold this fd.
+        fd = os.open(real, os.O_RDONLY | os.O_EXCL | os.O_CLOEXEC | os.O_NOCTTY)
+    except OSError as e:
+        if e.errno == 16:
+            raise Refused("busy", f"{real} is busy (mounted, swapped on or used by another "
+                                  "program).")
+        raise Refused("open-failed", f"{real} could not be opened: {e.strerror}.")
+    audit(f"opened {real} read-only")
+    reply({"ok": True, "device": real, "name": name}, fd=fd)
+
+
+def open_usb(bus, devnum):
+    if not (re.fullmatch(r"\d{1,3}", bus) and re.fullmatch(r"\d{1,3}", devnum)):
+        raise Refused("bad-path", "Invalid USB bus or device number.")
+    path = f"/dev/bus/usb/{int(bus):03d}/{int(devnum):03d}"
+    st = os.stat(path)
+    if not stat.S_ISCHR(st.st_mode) or os.major(st.st_rdev) != 189:
+        raise Refused("bad-path", f"{path} is not a USB device node.")
+    for entry in os.listdir("/sys/bus/usb/devices"):
+        d = os.path.join("/sys/bus/usb/devices", entry)
+        try:
+            if int(open(os.path.join(d, "busnum")).read()) == int(bus) and \
+                    int(open(os.path.join(d, "devnum")).read()) == int(devnum):
+                if open(os.path.join(d, "bDeviceClass")).read().strip() == "09":
+                    raise Refused("hub", "USB hubs cannot be passed to a VM.")
+                break
+        except (OSError, ValueError):
+            continue
+    fd = os.open(path, os.O_RDWR | os.O_CLOEXEC | os.O_NOCTTY)
+    audit(f"opened USB device {path}")
+    reply({"ok": True, "device": path}, fd=fd)
+
+
+def smart(path):
+    real, _name, disk = check_disk_for_smart(path)
+    smartctl = next((p for p in SMARTCTL_PATHS if os.path.exists(p)), None)
+    if not smartctl:
+        raise Refused("no-smartctl", "smartmontools is not installed.")
+    target = f"/dev/{disk}"
+    cp = subprocess.run([smartctl, "--json=c", "-i", "-H", "-A", "-l", "error", target],
+                        capture_output=True, text=True, timeout=120,
+                        env={"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LC_ALL": "C"})
+    try:
+        data = json.loads(cp.stdout)
+    except ValueError:
+        data = {"raw": cp.stdout[-4000:]}
+    reply({"ok": True, "device": target, "exit_status": cp.returncode, "smart": data})
+
+
+def check_disk_for_smart(path):
+    if not path.startswith("/dev/"):
+        raise Refused("bad-path", "Only devices under /dev can be checked.")
+    real = os.path.realpath(path)
+    name, _majmin, _ = dev_name_of(real)
+    return real, name, whole_disk(name)
+
+
+def main(argv):
+    if len(argv) < 2:
+        reply({"ok": False, "code": "usage", "error": "usage: rehome-helper VERB ARGS"})
+        return 2
+    verb, args = argv[1], argv[2:]
+    try:
+        if verb in ("open-disk", "open-usb"):
+            st = os.fstat(0)
+            if not stat.S_ISSOCK(st.st_mode):
+                raise Refused("usage", "stdin must be a socket.")
+        if verb == "open-disk" and len(args) == 1:
+            open_disk(args[0])
+        elif verb == "open-usb" and len(args) == 2:
+            open_usb(args[0], args[1])
+        elif verb == "smart" and len(args) == 1:
+            smart(args[0])
+        elif verb == "check-disk" and len(args) == 1:
+            real, name, disk = check_disk(args[0])
+            reply({"ok": True, "device": real, "name": name, "disk": disk})
+        else:
+            raise Refused("usage", f"unknown command: {' '.join(argv[1:])}")
+    except Refused as e:
+        reply({"ok": False, "code": e.code, "error": str(e)})
+        return 1
+    except OSError as e:
+        reply({"ok": False, "code": "os-error", "error": f"{e.strerror}: {e.filename}"})
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

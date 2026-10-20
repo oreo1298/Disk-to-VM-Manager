@@ -14,6 +14,7 @@ memory_mib = 256
 max_memory_mib = 2048
 firmware = "bios"
 rtc = "localtime"
+rtc_catchup = true            # re-inject lost clock ticks (KVM)
 disk_bus = "ide"
 nic = "pcnet"
 display = "cirrus-vga"

@@ -176,6 +176,7 @@ class Builder:
         self._shares()
         self._guest_channels()
         self._misc()
+        self._direct_boot()
         if self.opts.paused:
             self.a("-S")
         if self.opts.incoming:
@@ -260,7 +261,9 @@ class Builder:
         if not self.pc_like:
             return
         rtc = ["base=localtime" if self.cfg.machine.rtc == "localtime" else "base=utc", "clock=host"]
-        if self.cfg.os.family in ("windows", "win9x"):
+        # Tick re-injection keeps Windows' clock right under KVM. It is opt-in
+        # per profile: ReactOS (and some others) hang with it.
+        if self.cfg.machine.rtc_catchup and self.opts.accel == "kvm":
             rtc.append("driftfix=slew")
         self.a("-rtc", ",".join(rtc))
 
@@ -652,6 +655,17 @@ class Builder:
         if self.pc_like and fam in ("linux", "windows") and \
                 (self.caps.has_device("pvpanic") or not self.caps.devices):
             self.a("-device", "pvpanic")
+
+
+    def _direct_boot(self) -> None:
+        db = self.cfg.direct_boot
+        if not db or not db.kernel:
+            return
+        self.a("-kernel", str(self.cfg.resolve(db.kernel)))
+        if db.initrd:
+            self.a("-initrd", str(self.cfg.resolve(db.initrd)))
+        if db.append:
+            self.a("-append", db.append)
 
 
 def _parse_forward(spec: str) -> tuple[str, int, int]:

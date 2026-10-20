@@ -16,6 +16,7 @@ min_memory_mib = 4096
 firmware = "uefi-secure"      # Windows 11 requires UEFI with Secure Boot ...
 tpm = "2.0"                   # ... and a TPM 2.0 (a real swtpm, no bypass)
 rtc = "localtime"
+rtc_catchup = true            # re-inject lost clock ticks (KVM)
 hyperv = true
 hpet = false
 disk_bus = "auto"

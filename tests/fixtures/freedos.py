@@ -136,6 +136,7 @@ def build(out: str | os.PathLike, size_mib: int = 64, label: str = "FREEDOS",
             f.write(b"\x00" * (start - 1) * SECTOR)
             with open(part, "rb") as p:
                 shutil.copyfileobj(p, f, 4 * 2**20)
+            f.truncate(total * SECTOR)   # the partition table covers the whole disk
     return out
 
 

@@ -16,6 +16,7 @@ memory_mib = 512
 max_memory_mib = 3584
 firmware = "bios"
 rtc = "localtime"
+rtc_catchup = true            # re-inject lost clock ticks (KVM)
 disk_bus = "ide"              # PIIX IDE: atapi/intelide drivers are built in
 nic = "rtl8139"               # built-in Realtek RTL8139 driver
 display = "cirrus-vga"        # built-in Cirrus driver gives 1024x768 in true colour

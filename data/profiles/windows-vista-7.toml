@@ -14,6 +14,7 @@ cpus = 2
 memory_mib = 4096
 firmware = "auto"
 rtc = "localtime"
+rtc_catchup = true            # re-inject lost clock ticks (KVM)
 hyperv = true
 hpet = false
 disk_bus = "sata"             # msahci is built in; Rehome makes it a boot driver

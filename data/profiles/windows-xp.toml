@@ -16,6 +16,7 @@ memory_mib = 1024
 max_memory_mib = 3584         # 32-bit editions
 firmware = "bios"
 rtc = "localtime"
+rtc_catchup = true            # re-inject lost clock ticks (KVM)
 disk_bus = "ide"
 nic = "rtl8139"
 display = "cirrus-vga"

@@ -1,0 +1,101 @@
+[
+ {
+  "version": "41",
+  "arch": "x86_64",
+  "variant": "Workstation",
+  "subvariant": "Workstation",
+  "link": "https://download.fedoraproject.org/pub/fedora/linux/releases/41/Workstation/x86_64/iso/Fedora-Workstation-Live-41-1.1.x86_64.iso",
+  "sha256": "cb261ca29bbdde73abb7e6b16ae0b68fd374300c8c64e7ae25026f055a3f50a1",
+  "size": "2612854784"
+ },
+ {
+  "version": "41",
+  "arch": "x86_64",
+  "variant": "Server",
+  "subvariant": "Server",
+  "link": "https://download.fedoraproject.org/pub/fedora/linux/releases/41/Server/x86_64/iso/Fedora-Server-dvd-x86_64-41-1.1.iso",
+  "sha256": "2c851affd83f45525b3f434213ac2781114975ebb58ac75de3455e9a2e9d13c2",
+  "size": "2612854784"
+ },
+ {
+  "version": "41",
+  "arch": "x86_64",
+  "variant": "Server",
+  "subvariant": "Server",
+  "link": "https://download.fedoraproject.org/pub/fedora/linux/releases/41/Server/x86_64/iso/Fedora-Server-netinst-x86_64-41-1.1.iso",
+  "sha256": "4d1c98842c8cd3f6053c3de8eb40f1a84722940c44824d26a40e47172ae92ad5",
+  "size": "2612854784"
+ },
+ {
+  "version": "42",
+  "arch": "x86_64",
+  "variant": "Workstation",
+  "subvariant": "Workstation",
+  "link": "https://download.fedoraproject.org/pub/fedora/linux/releases/42/Workstation/x86_64/iso/Fedora-Workstation-Live-42-1.1.x86_64.iso",
+  "sha256": "7667c861e30182a7b8da1470296d7c7cad1a1276e6ae8be404e9d1d686943e7a",
+  "size": "2612854784"
+ },
+ {
+  "version": "42",
+  "arch": "x86_64",
+  "variant": "Server",
+  "subvariant": "Server",
+  "link": "https://download.fedoraproject.org/pub/fedora/linux/releases/42/Server/x86_64/iso/Fedora-Server-dvd-x86_64-42-1.1.iso",
+  "sha256": "8459b1b78ace3d44881c63fa082e7f0f3b90e47ac7daad60d9f4ecc9991fe86d",
+  "size": "2612854784"
+ },
+ {
+  "version": "42",
+  "arch": "x86_64",
+  "variant": "Server",
+  "subvariant": "Server",
+  "link": "https://download.fedoraproject.org/pub/fedora/linux/releases/42/Server/x86_64/iso/Fedora-Server-netinst-x86_64-42-1.1.iso",
+  "sha256": "a89636a9e185d151bb6f180aaa633e26ad0d7b78661a99d3e3ff388229c4b66c",
+  "size": "2612854784"
+ },
+ {
+  "version": "43",
+  "arch": "x86_64",
+  "variant": "Workstation",
+  "subvariant": "Workstation",
+  "link": "https://download.fedoraproject.org/pub/fedora/linux/releases/43/Workstation/x86_64/iso/Fedora-Workstation-Live-43-1.1.x86_64.iso",
+  "sha256": "28406c67f575ebc200fcc3fe35d644149d3678bdeb339358bf105bbfbebdbe94",
+  "size": "2612854784"
+ },
+ {
+  "version": "43",
+  "arch": "x86_64",
+  "variant": "Server",
+  "subvariant": "Server",
+  "link": "https://download.fedoraproject.org/pub/fedora/linux/releases/43/Server/x86_64/iso/Fedora-Server-dvd-x86_64-43-1.1.iso",
+  "sha256": "d1372d7d14376c13578d6a532fe24a62a01c74b224aa809ea9002222c42f09b3",
+  "size": "2612854784"
+ },
+ {
+  "version": "43",
+  "arch": "x86_64",
+  "variant": "Server",
+  "subvariant": "Server",
+  "link": "https://download.fedoraproject.org/pub/fedora/linux/releases/43/Server/x86_64/iso/Fedora-Server-netinst-x86_64-43-1.1.iso",
+  "sha256": "141a15d1ebdde02ee2a4355c79107811515a46c5e559bc22380ae1705e5fc60b",
+  "size": "2612854784"
+ },
+ {
+  "version": "44 Beta",
+  "arch": "x86_64",
+  "variant": "Server",
+  "subvariant": "Server",
+  "link": "https://download.fedoraproject.org/pub/fedora/linux/releases/test/44_Beta/Server/x86_64/iso/Fedora-Server-dvd-x86_64-44_Beta-1.2.iso",
+  "sha256": "560c72de72c0a5222d928237f6b105296da059853534b8d01fc23527c1d5d8a4",
+  "size": "1"
+ },
+ {
+  "version": "43",
+  "arch": "aarch64",
+  "variant": "Server",
+  "subvariant": "Server",
+  "link": "https://download.fedoraproject.org/pub/fedora/linux/releases/43/Server/aarch64/iso/Fedora-Server-dvd-aarch64-43-1.1.iso",
+  "sha256": "7c65964be990d38cbfa79896f9e49d6e3ee2016c2618fc586b80edf8fa2ea457",
+  "size": "1"
+ }
+]

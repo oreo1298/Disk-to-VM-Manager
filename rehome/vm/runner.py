@@ -349,6 +349,12 @@ def start(cfg: VMConfig, *, headless: bool = False, paused: bool = False,
             "console": plan.console, "warnings": plan.warnings, "argv": argv}
     _state_file(cfg).write_text(json.dumps(meta, indent=2))
     _CHILDREN[cfg.id] = proc
+    if cfg.direct_boot and cfg.direct_boot.once:
+        from rehome.vm import library
+        with library.locked(cfg):
+            fresh = library.reload(cfg)
+            fresh.direct_boot = None
+            library.save(fresh)
     hooks.run("started", cfg)
     return state(cfg)
 

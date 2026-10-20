@@ -10,4 +10,3 @@ __pycache__/
 *.qcow2
 *.img
 *.iso
-!tests/fixtures/**

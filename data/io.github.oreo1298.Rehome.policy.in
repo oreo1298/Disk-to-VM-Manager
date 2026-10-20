@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<!-- Installed by Rehome. @HELPER@ is replaced with the helper's path at install time. -->
+<policyconfig>
+  <vendor>Rehome</vendor>
+  <vendor_url>https://github.com/oreo1298/Disk-to-VM-Manager</vendor_url>
+  <icon_name>io.github.oreo1298.Rehome</icon_name>
+
+  <action id="io.github.oreo1298.Rehome.open-disk">
+    <description>Read a disk to run its operating system as a virtual machine</description>
+    <message>Rehome needs permission to read a disk (read-only). Nothing on the disk will be changed.</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">@HELPER@</annotate>
+    <annotate key="org.freedesktop.policykit.exec.argv1">open-disk</annotate>
+  </action>
+
+  <action id="io.github.oreo1298.Rehome.check-disk">
+    <description>Check whether a disk is in use</description>
+    <message>Rehome needs permission to check whether a disk is in use.</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">@HELPER@</annotate>
+    <annotate key="org.freedesktop.policykit.exec.argv1">check-disk</annotate>
+  </action>
+
+  <action id="io.github.oreo1298.Rehome.smart">
+    <description>Read a disk's health (SMART) data</description>
+    <message>Rehome needs permission to read the health status of a disk.</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">@HELPER@</annotate>
+    <annotate key="org.freedesktop.policykit.exec.argv1">smart</annotate>
+  </action>
+
+  <action id="io.github.oreo1298.Rehome.open-usb">
+    <description>Connect a USB device to a virtual machine</description>
+    <message>Rehome needs permission to connect a USB device to a virtual machine.</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">@HELPER@</annotate>
+    <annotate key="org.freedesktop.policykit.exec.argv1">open-usb</annotate>
+  </action>
+</policyconfig>

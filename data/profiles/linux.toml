@@ -28,5 +28,5 @@ firmware = "uefi"
 disk_bus = "virtio"
 
 [patches]
-list = ["linux.fstab", "linux.bootloader", "linux.initramfs", "linux.gpu_driver",
-        "linux.network", "linux.hostile_software", "linux.rtc"]
+list = ["linux.fstab", "linux.bootloader", "linux.initramfs", "linux.switch_virtio",
+        "linux.gpu_driver", "linux.network", "linux.hostile_software", "linux.rtc"]

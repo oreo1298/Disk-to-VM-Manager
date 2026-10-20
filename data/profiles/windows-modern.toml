@@ -13,6 +13,7 @@ cpus = 4
 memory_mib = 4096
 firmware = "auto"
 rtc = "localtime"
+rtc_catchup = true            # re-inject lost clock ticks (KVM)
 hyperv = true
 hpet = false
 disk_bus = "auto"             # SATA, or NVMe when the original was NVMe

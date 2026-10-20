@@ -1,0 +1,57 @@
+# Maintainer: Rehome contributors <https://github.com/oreo1298/Disk-to-VM-Manager>
+#
+# depends/optdepends mirror the "arch" entries of data/packages.toml
+# (required = true -> depends, optional -> optdepends); tests/unit/test_layout.py
+# fails if they drift apart. After tagging a release: bump pkgver, run
+# `updpkgsums` and `makepkg --printsrcinfo > .SRCINFO` (see docs/PACKAGING.md).
+
+pkgname=rehome
+pkgver=0.1.0
+pkgrel=1
+pkgdesc='Turn installed operating systems into QEMU/KVM virtual machines'
+arch=('any')
+url='https://github.com/oreo1298/Disk-to-VM-Manager'
+license=('GPL-3.0-or-later')
+depends=(
+  'qemu-desktop'
+  'edk2-ovmf'
+  'swtpm'
+  'libguestfs'
+  'guestfs-tools'
+  'nbdkit'
+  'smartmontools'
+  'polkit'
+  'python>=3.11'
+  'python-gobject'
+  'gtk4'
+  'libadwaita'
+  'libosinfo'
+  'osinfo-db'
+  'xorriso'
+  'dosfstools'
+  'mtools'
+  'usbutils'
+  'pciutils'
+  'util-linux'
+)
+optdepends=(
+  'qemu-system-aarch64: run ARM64 guests'
+  'edk2-aarch64: UEFI firmware for ARM64 guests'
+  'virt-v2v: virtio conversion for Windows 7+ and major Linux distributions'
+  'virtiofsd: shared folders'
+  'passt: fast unprivileged NAT networking'
+  'ddrescue: rescue failing disks to an image'
+  'libewf: import E01 forensic images'
+)
+source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+package() {
+  cd "Disk-to-VM-Manager-$pkgver"
+  python packaging/layout.py install \
+    --prefix /usr \
+    --libexecdir /usr/lib/rehome \
+    --python /usr/bin/python3 \
+    --destdir "$pkgdir" \
+    --quiet
+}

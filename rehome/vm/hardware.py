@@ -93,6 +93,7 @@ def apply_profile(cfg: VMConfig, profile: Profile, facts: dict, ctx: HardwareCon
     if m.firmware == "uefi-secure" and m.type != "q35" and m.arch in ("x86_64", "i386"):
         m.type = "q35"
     m.rtc = hw("rtc", "utc")
+    m.rtc_catchup = bool(hw("rtc_catchup", False))
     m.hyperv = bool(hw("hyperv", False))
     m.hpet = bool(hw("hpet", True))
     m.acpi = bool(hw("acpi", True))

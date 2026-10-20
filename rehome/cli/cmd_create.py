@@ -28,14 +28,8 @@ def register(sub) -> None:
     p.add_argument("--share", action="append", default=[], help="host folder to share (virtiofs)")
     p.add_argument("--extra-iso", action="append", default=[], help="additional CD (e.g. drivers)")
     p.add_argument("--floppy", help="floppy image (PC machine only)")
-    p.add_argument("--unattended", action="store_true",
-                   help="install automatically (Windows and major Linux distributions)")
-    p.add_argument("--user", default="", help="user name for unattended installs")
-    p.add_argument("--password", default="", help="password for unattended installs")
-    p.add_argument("--product-key", default="", help="Windows product key (optional)")
-    p.add_argument("--locale", default="", help="e.g. en_US")
-    p.add_argument("--timezone", default="", help="e.g. Europe/Berlin")
-    p.add_argument("--hostname", default="")
+    from rehome.cli.cmd_media import add_unattended_args
+    add_unattended_args(p)
     p.add_argument("--dry-run", action="store_true", help="show what would be created")
     p.add_argument("--start", action="store_true", help="start the VM after creating it")
     p.add_argument("--json", action="store_true")
@@ -78,23 +72,43 @@ def cmd_create(args) -> int:
             return 0
         _print_plan(p)
         return 0
+    from rehome.cli.cmd_media import answers_from_args
+    answers = answers_from_args(args)
+    if answers is not None:
+        from rehome.media import unattended
+        unattended.validate(answers)          # before creating anything
     cfg = create_mod.create(spec)
     notes = []
-    if args.unattended:
-        from rehome.media import unattended
-        notes += unattended.prepare(cfg, unattended.Answers(
-            user=args.user, password=args.password, product_key=args.product_key,
-            locale=args.locale, timezone=args.timezone, hostname=args.hostname))
-    if args.json:
+    if answers is not None:
+        from rehome.vm import library
+        try:
+            notes += unattended.prepare(cfg, answers)
+        except BaseException:
+            library.delete(cfg)               # don't leave a half-prepared VM behind
+            raise
+    if args.json and not args.start:
         print_json({"id": cfg.id, "name": cfg.name, "dir": str(cfg.dir), "notes": notes})
-    else:
+    elif not args.json:
         print(f"Created {bold(cfg.name)} ({cfg.short_id}) in {cfg.dir}")
         for n in notes:
             print("  " + n)
     if args.start:
         from rehome.vm import runner
         st = runner.start(cfg)
-        print(f"Started (pid {st.pid}).")
+        if not args.json:
+            print(f"Started (pid {st.pid}).")
+        extra = []
+        if answers is not None:
+            # Windows DVDs wait for a key press before starting Setup.
+            extra = unattended.after_start(
+                cfg, status=None if args.json else (lambda s: print(dim(s + " …"))))
+        notes += extra
+        if args.json:
+            print_json({"id": cfg.id, "name": cfg.name, "dir": str(cfg.dir), "notes": notes,
+                        "pid": st.pid})
+        else:
+            for n in extra:
+                print("  " + n)
     return 0
 
 

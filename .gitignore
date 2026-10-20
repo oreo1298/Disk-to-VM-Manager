@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+/.venv/
+/build/
+/dist/
+/.pytest_cache/
+/tests/images/
+/tests/.cache/
+/tests/boot/artifacts/
+*.qcow2
+*.img
+*.iso
+!tests/fixtures/**

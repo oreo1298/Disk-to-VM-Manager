@@ -1,0 +1,164 @@
+# Logical component -> distro package names.
+#
+# Used by `rehome doctor` to print copy-paste install commands and by
+# install.sh to install dependencies. Families: arch (pacman), debian (apt),
+# fedora (dnf), suse (zypper).
+#
+# `required = true` components are installed by default by install.sh;
+# optional ones are offered.
+
+[qemu]
+label = "QEMU (x86 system emulator, tools and UI modules)"
+required = true
+arch = ["qemu-desktop"]
+debian = ["qemu-system-x86", "qemu-utils", "qemu-system-gui", "qemu-system-modules-opengl"]
+fedora = ["qemu-kvm", "qemu-img", "qemu-ui-dbus", "qemu-ui-opengl", "qemu-ui-egl-headless",
+          "qemu-audio-pipewire", "qemu-device-usb-host", "qemu-device-display-virtio-vga",
+          "qemu-device-display-virtio-vga-gl", "qemu-device-display-virtio-gpu-gl"]
+suse = ["qemu-x86", "qemu-tools", "qemu-ui-dbus", "qemu-ui-opengl", "qemu-audio-pipewire",
+        "qemu-hw-usb-host", "qemu-hw-display-virtio-vga", "qemu-hw-display-virtio-gpu",
+        "qemu-hw-display-virtio-gpu-pci"]
+
+[qemu-aarch64]
+label = "QEMU ARM64 emulator (only needed for ARM guests)"
+required = false
+arch = ["qemu-system-aarch64"]
+debian = ["qemu-system-arm"]
+fedora = ["qemu-system-aarch64"]
+suse = ["qemu-arm"]
+
+[ovmf]
+label = "UEFI firmware (OVMF)"
+required = true
+arch = ["edk2-ovmf"]
+debian = ["ovmf"]
+fedora = ["edk2-ovmf"]
+suse = ["qemu-ovmf-x86_64"]
+
+[aavmf]
+label = "UEFI firmware for ARM64 guests"
+required = false
+arch = ["edk2-aarch64"]
+debian = ["qemu-efi-aarch64"]
+fedora = ["edk2-aarch64"]
+suse = ["qemu-uefi-aarch64"]
+
+[swtpm]
+label = "Software TPM (Windows 11, BitLocker)"
+required = true
+arch = ["swtpm"]
+debian = ["swtpm", "swtpm-tools"]
+fedora = ["swtpm", "swtpm-tools"]
+suse = ["swtpm"]
+
+[libguestfs]
+label = "libguestfs (OS identification and offline patching)"
+required = true
+arch = ["libguestfs", "guestfs-tools"]
+debian = ["libguestfs-tools", "python3-guestfs"]
+fedora = ["libguestfs", "python3-libguestfs", "guestfs-tools"]
+suse = ["libguestfs", "python3-libguestfs", "guestfs-tools"]
+
+[virt-v2v]
+label = "virt-v2v (virtio conversion for Windows 7+ and major Linux distros)"
+required = false
+arch = ["virt-v2v"]
+debian = ["virt-v2v"]
+fedora = ["virt-v2v"]
+suse = ["virt-v2v"]
+
+[nbdkit]
+label = "nbdkit (serves physical disks to offline tools)"
+required = true
+arch = ["nbdkit"]
+debian = ["nbdkit"]
+fedora = ["nbdkit-server", "nbdkit-basic-plugins"]
+suse = ["nbdkit", "nbdkit-basic-plugins"]
+
+[virtiofsd]
+label = "virtiofsd (shared folders)"
+required = false
+arch = ["virtiofsd"]
+debian = ["virtiofsd"]
+fedora = ["virtiofsd"]
+suse = ["virtiofsd"]
+
+[passt]
+label = "passt (fast unprivileged NAT networking)"
+required = false
+arch = ["passt"]
+debian = ["passt"]
+fedora = ["passt"]
+suse = ["passt"]
+
+[smartmontools]
+label = "smartmontools (disk health check)"
+required = true
+arch = ["smartmontools"]
+debian = ["smartmontools"]
+fedora = ["smartmontools"]
+suse = ["smartmontools"]
+
+[ddrescue]
+label = "GNU ddrescue (rescue failing disks)"
+required = false
+arch = ["ddrescue"]
+debian = ["gddrescue"]
+fedora = ["ddrescue"]
+suse = ["gnu_ddrescue"]
+
+[libewf]
+label = "libewf tools (E01 forensic images)"
+required = false
+arch = ["libewf"]
+debian = ["ewf-tools"]
+fedora = ["libewf-tools"]
+suse = ["ewftools"]
+
+[polkit]
+label = "polkit (permission prompts for disks and USB)"
+required = true
+arch = ["polkit"]
+debian = ["pkexec", "polkitd"]
+fedora = ["polkit"]
+suse = ["polkit"]
+
+[python-gi]
+label = "Python GObject bindings"
+required = true
+arch = ["python", "python-gobject"]
+debian = ["python3", "python3-gi", "python3-gi-cairo"]
+fedora = ["python3", "python3-gobject"]
+suse = ["python3", "python3-gobject", "python3-gobject-Gdk"]
+
+[gtk4]
+label = "GTK 4 and libadwaita (graphical interface)"
+required = true
+arch = ["gtk4", "libadwaita"]
+debian = ["gir1.2-gtk-4.0", "gir1.2-adw-1"]
+fedora = ["gtk4", "libadwaita"]
+suse = ["typelib-1_0-Gtk-4_0", "typelib-1_0-Adw-1"]
+
+[libosinfo]
+label = "libosinfo (installer ISO recognition)"
+required = true
+arch = ["libosinfo", "osinfo-db"]
+debian = ["gir1.2-libosinfo-1.0", "libosinfo-bin", "osinfo-db"]
+fedora = ["libosinfo", "osinfo-db"]
+suse = ["typelib-1_0-Libosinfo-1_0", "libosinfo", "osinfo-db"]
+
+[media-tools]
+label = "ISO and FAT tools (unattended installs)"
+required = true
+arch = ["xorriso", "dosfstools", "mtools"]
+debian = ["xorriso", "dosfstools", "mtools"]
+fedora = ["xorriso", "dosfstools", "mtools"]
+suse = ["xorriso", "dosfstools", "mtools"]
+
+[hwinfo-tools]
+label = "Hardware listing tools"
+required = true
+arch = ["usbutils", "pciutils", "util-linux"]
+debian = ["usbutils", "pciutils", "util-linux"]
+fedora = ["usbutils", "pciutils", "util-linux"]
+suse = ["usbutils", "pciutils", "util-linux"]

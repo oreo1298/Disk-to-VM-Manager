@@ -1,0 +1,18 @@
+[project]
+name = "rehome"
+dynamic = ["version"]
+description = "Turn installed operating systems into QEMU/KVM virtual machines"
+readme = "README.md"
+license = { text = "GPL-3.0-or-later" }
+requires-python = ">=3.11"
+
+[project.scripts]
+rehome = "rehome.cli.main:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"

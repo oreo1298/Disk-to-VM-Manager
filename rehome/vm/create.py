@@ -105,6 +105,8 @@ def plan(spec: NewVMSpec, host=None) -> CreatePlan:
     ctx = HardwareContext(fresh=True)
     notes = apply_profile(cfg, prof, facts, ctx, host=host, memory_mib=spec.memory_mib,
                           cpus=spec.cpus)
+    if spec.network == "none":
+        cfg.nics = []              # the profile adds a default NIC
     m = cfg.machine
     if spec.firmware:
         m.firmware = spec.firmware

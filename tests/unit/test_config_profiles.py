@@ -71,3 +71,12 @@ def test_snapshot_tree_rendering():
     assert len(roots) == 1 and len(roots[0].children) == 2
     b = [c for c in roots[0].children if c.snapshot and c.snapshot.id == "b"][0]
     assert b.children[0].snapshot is None  # "Now" under the current checkpoint
+
+
+def test_create_plan_network_none_has_no_nic():
+    from rehome.vm import create
+    plan = create.plan(create.NewVMSpec(name="Offline", os="reactos", disk_size=0, network="none"))
+    assert plan.config.nics == []
+    plan = create.plan(create.NewVMSpec(name="Online", os="reactos", disk_size=0))
+    assert [n.mode for n in plan.config.nics] == ["nat"]
+    assert plan.config.nics[0].model == "pcnet"

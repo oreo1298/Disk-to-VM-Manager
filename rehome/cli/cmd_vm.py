@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import sys
 import time
 
@@ -112,6 +113,9 @@ def register(sub) -> None:
     p.add_argument("--forward", metavar="NIC=tcp:HOST:GUEST", action="append", default=[])
     p.add_argument("--display", help="virtio-vga, VGA, qxl-vga, cirrus-vga, ...")
     p.add_argument("--gl", choices=["on", "off"], help="3D acceleration (virgl)")
+    p.add_argument("--console", choices=["dbus", "spice", "vnc"],
+                   help="how the screen is shown: Rehome's console (dbus, default) or an external "
+                        "SPICE/VNC viewer")
     p.add_argument("--sound", help="none, ich9-intel-hda, AC97, sb16, ...")
     p.add_argument("--usb", help="USB controller: none, qemu-xhci, piix3-usb-uhci, ...")
     p.add_argument("--pointer", choices=["usb-tablet", "virtio-tablet", "ps2", "usb-mouse"])
@@ -164,6 +168,8 @@ def register(sub) -> None:
 
     p = sub.add_parser("console", help="Open the VM's console window")
     p.add_argument("vm")
+    p.add_argument("--external", action="store_true",
+                   help="open a VNC/SPICE console in remote-viewer (when QEMU has no D-Bus display)")
     p.set_defaults(func=cmd_console)
 
 
@@ -462,6 +468,13 @@ def cmd_console(args) -> int:
     cfg = _vm(args.vm)
     if os.geteuid() == 0:
         raise RehomeError("The console must not run as root.")
+    if args.external:
+        from rehome.vm import runner
+        argv = runner.external_viewer(cfg)
+        subprocess.Popen(argv, start_new_session=True, stdin=subprocess.DEVNULL,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        print(f"Opened {os.path.basename(argv[0])}.")
+        return 0
     try:
         from rehome.ui.app import run as run_gui
     except (ImportError, ValueError) as e:

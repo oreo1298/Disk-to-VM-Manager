@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import subprocess
 import time
 
 import gi
@@ -92,6 +93,7 @@ class ConsoleWindow(Adw.ApplicationWindow):
         start.add_css_class("pill")
         start.add_css_class("suggested-action")
         start.connect("clicked", lambda *_: self.activate_action("win.start"))
+        self._start_btn = start
         self.off_page.set_child(start)
         self.stack.add_named(self.off_page, "off")
         spinner_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12,
@@ -200,6 +202,7 @@ class ConsoleWindow(Adw.ApplicationWindow):
         else:
             self._disconnect()
             self.stack.set_visible_child_name("off")
+            self.off_page.set_child(self._start_btn)
             saved = st.status == runner.SAVED
             self.off_page.set_title("The VM's state is saved" if saved else "The VM is off")
             self.off_page.set_description("Start it to continue where it left off." if saved else None)
@@ -215,12 +218,7 @@ class ConsoleWindow(Adw.ApplicationWindow):
             client.connect_qmp(runner.runtime(self.cfg).qmp_ui)
         except Exception as e:  # noqa: BLE001 - shown in the UI
             log.warning("console connection failed: %s", e)
-            self.stack.set_visible_child_name("off")
-            self.off_page.set_title("Cannot show this VM's screen")
-            self.off_page.set_description(
-                "The VM is running, but its display could not be opened. It may use an external "
-                "viewer (VNC/SPICE), or QEMU's D-Bus display module may be missing (run "
-                "`rehome doctor`).")
+            self._show_unavailable()
             return
         self.client = client
         client.connect("closed", lambda *_: GLib.idle_add(self.refresh))
@@ -239,6 +237,30 @@ class ConsoleWindow(Adw.ApplicationWindow):
         self._clip_handler = clip.connect("changed", self._host_clipboard_changed)
         if not client.absolute:
             self.toast("Click into the screen to capture the mouse; press Ctrl+Alt to release it", 5)
+
+    def _show_unavailable(self):
+        self.stack.set_visible_child_name("off")
+        self.off_page.set_title("Cannot show this VM's screen")
+        try:
+            argv = runner.external_viewer(self.cfg)
+        except Exception as e:  # noqa: BLE001 - explained on the page
+            argv = None
+            hint = getattr(e, "fix", "") or ""
+        if argv:
+            self.off_page.set_description("QEMU's D-Bus display module is not installed, so this VM "
+                                          "uses a VNC or SPICE display. Open it in an external "
+                                          "viewer, or run `rehome doctor` to fix the module.")
+            btn = Gtk.Button(label="Open in External Viewer", halign=Gtk.Align.CENTER)
+            btn.add_css_class("pill")
+            btn.add_css_class("suggested-action")
+            btn.connect("clicked", lambda *_: subprocess.Popen(
+                argv, start_new_session=True, stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
+            self.off_page.set_child(btn)
+        else:
+            self.off_page.set_description("The VM is running, but its display could not be opened. "
+                                          + (hint or "Run `rehome doctor`."))
+            self.off_page.set_child(None)
 
     def _disconnect(self):
         if self.client is not None:

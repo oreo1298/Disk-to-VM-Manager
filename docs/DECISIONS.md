@@ -167,8 +167,13 @@ when offered.
   without running QEMU as root or loosening device permissions.
 - **3D (virgl):** `ScanoutDMABUF` → `Gdk.DmabufTextureBuilder` (GTK ≥ 4.14),
   experimental.
-- **Fallback** (QEMU built without the D-Bus display module): "Open in
-  external viewer" uses SPICE over a Unix socket with `remote-viewer`.
+- **Fallback** (QEMU built without the D-Bus display module): QEMU gets a
+  VNC (or, with `rehome set VM --console spice`, SPICE) Unix socket instead.
+  The console window then offers **Open in External Viewer**
+  (`remote-viewer`, or TigerVNC's `vncviewer`). `rehome console VM --external`
+  does the same from the CLI.
+
+Two behaviours of QEMU 8.2 found while testing shape the client (D16).
 
 ## D8. Privileged helper
 
@@ -290,3 +295,87 @@ restricted network policy.
   mirrors, FreeBSD and Microsoft downloads) limited some tests.
   `README.md` → "Testing" lists exactly what was verified and what must be
   re-run on a KVM host.
+
+## D16. Console client details learned from QEMU 8.2
+
+- **Video mode changes.** QEMU does not send a new `Scanout` when the guest
+  changes video mode, for example 640×480 → 720×400 when SeaBIOS hands over
+  to DOS. It only updates the console's `Width`/`Height` properties. The
+  `Update` calls for the new size can arrive before that property change.
+  The client therefore resizes its framebuffer on both signals and keeps the
+  overlapping pixels. Before this fix, the right edge of DOS screens was cut
+  off.
+- **No blocking calls after `RegisterListener`.** QEMU handles
+  `RegisterListener` by authenticating the new listener connection
+  synchronously, which needs our main loop to run. A synchronous D-Bus call
+  made after it deadlocks both sides until the 25-second D-Bus timeout. All
+  proxies, including the clipboard, are therefore set up first, and the
+  listener is registered last. The integration test fails if connecting
+  takes more than 5 seconds.
+- **Relative mouse.** GTK 4 has no API to confine or warp the pointer. For
+  guests without an absolute pointing device, the console hides the cursor
+  and sends motion deltas while the pointer is over the view, and Ctrl+Alt
+  releases it. Profiles therefore give every guest that supports one an
+  absolute device (USB tablet, or virtio-tablet with the drivers). Only DOS,
+  Windows 9x, NT 4 and ReactOS use a relative PS/2 mouse, because they have no
+  usable tablet driver.
+
+## D17. Networking fallback and helper processes
+
+- If `passt` is installed but fails to start, Rehome starts the VM with
+  QEMU's built-in NAT (slirp) and logs a warning instead of failing. This
+  happens in sandboxes such as gVisor, where passt cannot create its socket.
+- Rehome records the PIDs of helper processes (passt, swtpm, virtiofsd) in
+  the VM's runtime directory. Before signalling one, it checks
+  `/proc/PID/cmdline`, so a PID reused by an unrelated process is never
+  killed. A failed helper's pidfile is removed immediately.
+
+## D18. Clock catch-up only where it helps
+
+`-rtc driftfix=slew` (catch-up of lost timer ticks) is what NT-family guests
+expect. However, it stalled ReactOS for minutes at boot and slows TCG guests,
+as bisecting the ReactOS boot showed. It is therefore a profile setting
+(`rtc_catchup`), enabled for Windows NT-family profiles and applied only when
+the VM runs on KVM.
+
+## D19. Hooks as the pass-through extension point
+
+GPU/PCI pass-through is out of scope for v1, but users can experiment safely:
+
+- `prepare` hooks may write QEMU arguments to `$REHOME_QEMU_ARGS_FILE`.
+- `stopped` hooks run even when a start fails after `prepare`, so they can
+  undo host changes.
+- The `[passthrough]` config section is reserved, and a VM that uses it is
+  refused with a pointer to docs/HOOKS.md.
+
+This keeps the risky part (unbinding host drivers) in the user's hands
+without Rehome having to support it.
+
+## D20. Guest tools
+
+- **Windows:** the virtio-win ISO from the Fedora project (fedorapeople.org).
+  It is the upstream, signed source of the virtio drivers, the QEMU guest
+  agent and the SPICE agent. Rehome uses an installed copy if the
+  distribution ships one, and downloads it (about 700 MB) only when the user
+  asks.
+- **Linux:** the distribution's own packages (`qemu-guest-agent`,
+  `spice-vdagent`). Rehome shows the right install command for the guest's
+  distribution.
+- **Switching to virtio:** only after the user confirms the first boot and
+  installs the drivers. A checkpoint is taken first, so it can be undone.
+
+## D21. Verifying boots without a human
+
+`tests/boot` reads the success or failure of a boot from several signals:
+
+- the serial console log (Linux, BSD),
+- VGA text memory (DOS, BIOS messages, text-mode blue screens),
+- OCR of a QMP screendump with tesseract (graphical logins and desktops,
+  graphical blue screens),
+- the QEMU guest agent, when it is installed.
+
+Failure patterns (STOP codes, kernel panics, "grub rescue>" and similar) are
+checked first. Images and expectations come from an `images.toml` file next
+to the user's images, so real Windows or 9x disks never have to be committed
+or downloaded.
+

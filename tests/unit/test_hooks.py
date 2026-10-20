@@ -49,3 +49,11 @@ def test_stopped_hook_runs_when_start_fails_after_prepare(vm, tmp_path, monkeypa
     with pytest.raises(RehomeError, match="simulated"):
         runner.start(vm, headless=True)
     assert marker.read_text().split() == ["prepare", "stopped"]
+
+
+def test_sidecar_pid_check_ignores_reused_pids(tmp_path):
+    import os
+    me = os.getpid()
+    assert runner._is_sidecar(me, tmp_path / "python-x.pid")       # argv0 is python3.x
+    assert not runner._is_sidecar(me, tmp_path / "passt-net0.pid")
+    assert not runner._is_sidecar(2**22 + 12345, tmp_path / "passt-net0.pid")

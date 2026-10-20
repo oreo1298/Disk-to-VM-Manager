@@ -548,11 +548,32 @@ def _start_sidecars(sidecars, rt: RuntimePaths) -> None:
 
 def _kill_sidecar(sc, p) -> None:
     pid = _read_pid(sc.pidfile) if sc.pidfile else 0
+    if pid and not _is_sidecar(pid, Path(sc.pidfile)):
+        pid = 0
     for target in filter(None, (pid, p.pid if p.poll() is None else 0)):
         try:
             os.kill(target, signal.SIGTERM)
         except OSError:
             pass
+    try:
+        p.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        p.kill()
+    if sc.pidfile:
+        Path(sc.pidfile).unlink(missing_ok=True)
+
+
+def _is_sidecar(pid: int, pidfile: Path) -> bool:
+    """Is ``pid`` still the helper named by its pidfile (passt-net0.pid -> passt)?
+
+    Guards against signalling an unrelated process that reused the PID.
+    """
+    want = pidfile.stem.split("-")[0]
+    try:
+        argv0 = Path(f"/proc/{pid}/cmdline").read_bytes().split(b"\0")[0].decode(errors="replace")
+    except OSError:
+        return False
+    return want in os.path.basename(argv0)
 
 
 def _stop_sidecars(rt: RuntimePaths) -> None:
@@ -560,7 +581,7 @@ def _stop_sidecars(rt: RuntimePaths) -> None:
         if pidfile.name == "qemu.pid":
             continue
         pid = _read_pid(str(pidfile))
-        if pid:
+        if pid and _is_sidecar(pid, pidfile):
             try:
                 os.kill(pid, signal.SIGTERM)
             except OSError:
@@ -673,6 +694,30 @@ def after_stop(cfg: VMConfig) -> None:
         hooks.run("stopped", cfg)
     except RehomeError as e:
         log.warning("%s", e)
+
+
+def external_viewer(cfg: VMConfig) -> list[str]:
+    """Command line of an external viewer for a VM whose console is VNC or SPICE.
+
+    Used when QEMU lacks the D-Bus display module (see docs/DECISIONS.md, D7).
+    """
+    st = state(cfg)
+    if not st.active:
+        raise RehomeError(f"\"{cfg.name}\" is not running.", code="not-running")
+    rt = runtime(cfg)
+    if st.console not in ("vnc", "spice"):
+        raise RehomeError("This VM's screen is shown in Rehome's own console window.",
+                          fix=f"Run `rehome console \"{cfg.name}\"`.")
+    sock = rt.vnc if st.console == "vnc" else rt.spice
+    viewer = which("remote-viewer")
+    if viewer:
+        return [viewer, "--title", cfg.name, f"{st.console}+unix://{sock}"]
+    if st.console == "vnc" and which("vncviewer"):        # TigerVNC accepts a socket path
+        return [which("vncviewer"), sock]
+    raise RehomeError("No external viewer is installed.",
+                      fix="Install virt-viewer (it provides remote-viewer), or install QEMU's "
+                          "D-Bus display module so Rehome can show the screen itself "
+                          "(run `rehome doctor`).")
 
 
 def screenshot(cfg: VMConfig, path: str | os.PathLike) -> None:

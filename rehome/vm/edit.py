@@ -190,6 +190,9 @@ def apply_cli_changes(cfg: VMConfig, args) -> list[str]:
         if args.display:
             new.display.device = args.display
             log.append(f"display → {args.display}")
+        if getattr(args, "console", None):
+            new.display.console = args.console
+            log.append(f"console → {args.console}")
         if args.gl:
             new.display.gl = args.gl == "on"
             log.append(f"3D acceleration → {args.gl}")

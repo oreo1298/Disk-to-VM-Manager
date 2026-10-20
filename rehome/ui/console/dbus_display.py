@@ -184,8 +184,15 @@ class DisplayClient(GObject.Object):
         ab = self.mouse.get_cached_property("IsAbsolute")
         self.absolute = bool(ab.unpack()) if ab else True
         self.mouse.connect("g-properties-changed", self._mouse_props)
-        self._register_listener()
+        # QEMU (8.x) does not send a new Scanout when the guest changes video
+        # mode; only the console's Width/Height properties change.
+        self.console.connect("g-properties-changed", self._console_props)
+        # Every blocking call must happen before RegisterListener: QEMU handles
+        # it by authenticating the listener connection synchronously, which only
+        # completes once our main loop runs. A *_sync call made after it would
+        # deadlock both sides until the D-Bus timeout (25 s).
         self._setup_clipboard()
+        self._register_listener()
 
     def _proxy(self, path: str, iface: str) -> Gio.DBusProxy:
         return Gio.DBusProxy.new_sync(self.conn, Gio.DBusProxyFlags.NONE, None, None, path, iface, None)
@@ -264,6 +271,9 @@ class DisplayClient(GObject.Object):
         data = p.get_child_value(6).get_data_as_bytes().get_data()
         if self.map is not None or not self.fb or w <= 0 or h <= 0:
             return
+        if x + w > self.width or y + h > self.height:
+            # Updates for a larger new surface can arrive before the size change.
+            self._resize(max(self.width, x + w), max(self.height, y + h))
         rect = _to_bgrx(data, w, h, stride, fmt)   # packed rows of w * 4 bytes
         if rect is None:
             return
@@ -278,6 +288,24 @@ class DisplayClient(GObject.Object):
             src = (sy + row) * src_row + sx * 4
             self.fb[dst:dst + cw * 4] = rect[src:src + cw * 4]
         self.emit("update", x0, y0, cw, ch)
+
+    def _resize(self, w: int, h: int) -> None:
+        """Change the plain framebuffer's size, keeping the overlapping pixels."""
+        if (w, h) == (self.width, self.height) or w <= 0 or h <= 0:
+            return
+        fb = bytearray(w * h * 4)
+        cw, ch = min(w, self.width), min(h, self.height)
+        for row in range(ch):
+            fb[row * w * 4:(row * w + cw) * 4] = self.fb[row * self.width * 4:(row * self.width + cw) * 4]
+        self.width, self.height, self.fb = w, h, fb
+        self.emit("scanout", w, h)
+
+    def _console_props(self, _proxy, changed, _invalidated):
+        w, h = changed.lookup_value("Width", None), changed.lookup_value("Height", None)
+        if (w is None and h is None) or self.map is not None or self.dmabuf_fd >= 0 or not self.fb:
+            return
+        self._resize(w.unpack() if w is not None else self.width,
+                     h.unpack() if h is not None else self.height)
 
     def _m_ScanoutMap(self, p, inv):
         handle = p.get_child_value(0).get_handle()

@@ -148,7 +148,7 @@ class Builder:
     # --- top level ---------------------------------------------------------
 
     def build(self) -> LaunchPlan:
-        cfg, m = self.cfg, self.cfg.machine
+        cfg = self.cfg
         if cfg.passthrough.pci:
             raise RehomeError(
                 "PCI/GPU pass-through is configured, but this version of Rehome does not "

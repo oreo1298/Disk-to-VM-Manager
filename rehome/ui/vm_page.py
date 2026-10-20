@@ -48,10 +48,15 @@ class VmPage(Gtk.Box):
         self._actions()
 
         # Top: thumbnail + actions
-        top = Gtk.Box(spacing=18, margin_top=18, margin_bottom=12, margin_start=18, margin_end=18)
-        self.picture = Gtk.Picture(can_shrink=True, content_fit=Gtk.ContentFit.CONTAIN,
-                                   width_request=320, height_request=200)
-        pic_btn = Gtk.Button(child=self.picture, tooltip_text="Open the console")
+        top = Gtk.Box(spacing=18, margin_top=12, margin_bottom=12, margin_start=18, margin_end=18)
+        self.picture = Gtk.Picture(can_shrink=True, content_fit=Gtk.ContentFit.CONTAIN)
+        placeholder = Gtk.Image(icon_name="computer-symbolic", pixel_size=48)
+        placeholder.add_css_class("dim-label")
+        self.thumb_stack = Gtk.Stack(width_request=192, height_request=120)
+        self.thumb_stack.add_named(placeholder, "off")
+        self.thumb_stack.add_named(self.picture, "picture")
+        pic_btn = Gtk.Button(child=self.thumb_stack, tooltip_text="Open the console", valign=Gtk.Align.CENTER)
+        pic_btn.update_property([Gtk.AccessibleProperty.LABEL], ["Open the console"])
         pic_btn.add_css_class("flat")
         pic_btn.add_css_class("card")
         pic_btn.connect("clicked", lambda *_: self.open_console())
@@ -60,34 +65,32 @@ class VmPage(Gtk.Box):
                        hexpand=True)
         self.title = Gtk.Label(xalign=0, wrap=True)
         self.title.add_css_class("title-1")
-        self.state_label = Gtk.Label(xalign=0)
+        self.state_label = Gtk.Label(xalign=0, wrap=True)
         self.state_label.add_css_class("dim-label")
         info.append(self.title)
         info.append(self.state_label)
-        self.actions_box = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, max_children_per_line=6,
-                                       column_spacing=6, row_spacing=6, homogeneous=False)
-        self.btn_connect = _button("Connect", "video-display-symbolic", css="suggested-action")
+        self.actions_box = Gtk.Box(spacing=6, halign=Gtk.Align.START)
+        self.btn_connect = _button("Connect", "video-display-symbolic", "Open the console",
+                                   css="suggested-action")
         self.btn_connect.connect("clicked", lambda *_: self.open_console())
         self.btn_start = _button("Start", "media-playback-start-symbolic", css="suggested-action")
         self.btn_start.connect("clicked", lambda *_: self.start())
-        self.btn_shutdown = _button("Shut Down", "system-shutdown-symbolic")
+        self.btn_shutdown = _button("Shut Down", "system-shutdown-symbolic",
+                                    "Ask the guest operating system to shut down")
         self.btn_shutdown.connect("clicked", lambda *_: self._op(runner.shutdown, "Asked the guest to shut down"))
         self.btn_pause = _button("Pause", "media-playback-pause-symbolic")
         self.btn_pause.connect("clicked", lambda *_: self._pause())
-        self.btn_save = _button("Save", "document-save-symbolic", "Save the VM's state and stop it")
-        self.btn_save.connect("clicked", lambda *_: self._op(runner.save, "State saved"))
-        self.btn_off = _button("Turn Off", "process-stop-symbolic", "Turn off immediately", css="destructive-action")
-        self.btn_off.connect("clicked", lambda *_: confirm(
-            self, "Turn the VM off?", "This is like pulling the power plug: unsaved work in the VM is lost.",
-            "Turn Off", lambda: self._op(runner.force_off, "Turned off"), destructive=True))
-        self.btn_reset = _button("Reset", "view-refresh-symbolic")
-        self.btn_reset.connect("clicked", lambda *_: confirm(
-            self, "Reset the VM?", "Unsaved work in the VM is lost.", "Reset",
-            lambda: self._op(runner.reset, "Reset"), destructive=True))
+        power = Gio.Menu()
+        power.append("Save State and Stop", "vm.save")
+        power.append("Reset", "vm.reset")
+        power.append("Turn Off", "vm.force-off")
+        self.btn_power = Gtk.MenuButton(icon_name="pan-down-symbolic", menu_model=power,
+                                        tooltip_text="More power options")
+        self.btn_power.update_property([Gtk.AccessibleProperty.LABEL], ["More power options"])
         self.btn_checkpoint = _button("Checkpoint", "camera-photo-symbolic", "Take a checkpoint")
         self.btn_checkpoint.connect("clicked", lambda *_: self.checkpoints.take())
-        for b in (self.btn_connect, self.btn_start, self.btn_shutdown, self.btn_pause, self.btn_save,
-                  self.btn_off, self.btn_reset, self.btn_checkpoint):
+        for b in (self.btn_connect, self.btn_start, self.btn_shutdown, self.btn_pause, self.btn_power,
+                  self.btn_checkpoint):
             self.actions_box.append(b)
         info.append(self.actions_box)
         top.append(info)
@@ -135,15 +138,14 @@ class VmPage(Gtk.Box):
         self.btn_connect.set_visible(active)
         self.btn_start.set_visible(not active)
         self.btn_start.get_child().set_label("Resume" if st == runner.SAVED else "Start")
-        for b in (self.btn_shutdown, self.btn_pause, self.btn_save, self.btn_off, self.btn_reset):
+        for b in (self.btn_shutdown, self.btn_pause, self.btn_power):
             b.set_visible(active)
         self.btn_pause.get_child().set_label("Resume" if st == runner.PAUSED else "Pause")
         self.btn_pause.get_child().set_icon_name("media-playback-start-symbolic" if st == runner.PAUSED
                                                  else "media-playback-pause-symbolic")
-        tex = load_texture(item.thumbnail)
+        tex = load_texture(item.thumbnail) if active or st == runner.SAVED else None
         self.picture.set_paintable(tex)
-        if tex is None:
-            self.picture.set_paintable(None)
+        self.thumb_stack.set_visible_child_name("picture" if tex is not None else "off")
         self.summary.update()
         self.checkpoints.update()
         self.settings.update_state(active)
@@ -162,6 +164,13 @@ class VmPage(Gtk.Box):
             a = Gio.SimpleAction.new(name, None)
             a.connect("activate", lambda *_: fn())
             group.add_action(a)
+        act("save", lambda: self._op(runner.save, "State saved"))
+        act("reset", lambda: confirm(
+            self, "Reset the VM?", "Unsaved work in the VM is lost.", "Reset",
+            lambda: self._op(runner.reset, "Reset"), destructive=True))
+        act("force-off", lambda: confirm(
+            self, "Turn the VM off?", "This is like pulling the power plug: unsaved work in the VM is lost.",
+            "Turn Off", lambda: self._op(runner.force_off, "Turned off"), destructive=True))
         act("rename", self._rename)
         act("clone", self._clone)
         act("export", self._export)

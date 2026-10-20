@@ -45,13 +45,18 @@ class DoctorWindow(Adw.Window):
         page = Adw.PreferencesPage()
         problems = report.problems
         summary = Adw.PreferencesGroup()
-        status = Adw.StatusPage(
-            icon_name="emblem-ok-symbolic" if not problems else "dialog-warning-symbolic",
-            title="Everything is ready" if not problems else
-            f"{len(problems)} thing{'s' if len(problems) != 1 else ''} to look at",
-            description="Rehome checked the CPU, KVM, QEMU, firmware and helper tools.")
-        status.add_css_class("compact")
-        summary.add(status)
+        head = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        icon = Gtk.Image(icon_name="emblem-ok-symbolic" if not problems else "dialog-warning-symbolic",
+                         pixel_size=64)
+        icon.add_css_class("success" if not problems else "warning")
+        title = Gtk.Label(label="Everything is ready" if not problems else
+                          f"{len(problems)} thing{'s' if len(problems) != 1 else ''} to look at", wrap=True)
+        title.add_css_class("title-2")
+        desc = Gtk.Label(label="Rehome checked the CPU, KVM, QEMU, firmware and helper tools.", wrap=True)
+        desc.add_css_class("dim-label")
+        for w in (icon, title, desc):
+            head.append(w)
+        summary.add(head)
         page.add(summary)
         sections: dict[str, Adw.PreferencesGroup] = {}
         for chk in sorted(report.checks, key=lambda c: (c.status not in ("error", "warning"), 0)):

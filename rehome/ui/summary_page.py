@@ -83,11 +83,12 @@ class SummaryPage(Gtk.ScrolledWindow):
             if m.accel in ("auto", "kvm", "tcg") else m.accel
         g.add(_row("Processor", f"{m.cpus} virtual CPU{'s' if m.cpus != 1 else ''}, {m.cpu_model}, {accel}"))
         if m.accel == "tcg" and m.accel_reason:
-            g.add(_row("Why emulation", m.accel_reason))
-        g.add(_row("Memory", human(m.memory_mib * 2**20)))
+            g.add(_row("Why emulation", m.accel_reason, "dialog-information-symbolic"))
+        g.add(_row("Memory", human(m.memory_mib * 2**20), "media-flash-symbolic"))
         g.add(_row("Firmware", f"{FW.get(m.firmware, m.firmware)}, TPM {m.tpm if m.tpm != 'none' else 'off'}, "
                                f"{'Q35' if m.type == 'q35' else 'i440FX'} chipset, clock in "
-                               f"{'local time' if m.rtc == 'localtime' else 'UTC'}"))
+                               f"{'local time' if m.rtc == 'localtime' else 'UTC'}",
+                   "application-x-firmware-symbolic"))
         for d in cfg.disks:
             src = ""
             if d.source:
@@ -101,7 +102,7 @@ class SummaryPage(Gtk.ScrolledWindow):
                     "none": "not connected"}.get(n.mode, n.mode)
             g.add(_row(f"Network {n.id}", f"{n.model}, {mode}, {n.mac}", "network-wired-symbolic"))
         g.add(_row("Display & sound", f"{cfg.display.device}{' with 3D' if cfg.display.gl else ''}; "
-                                      f"sound {cfg.sound.device}"))
+                                      f"sound {cfg.sound.device}", "video-display-symbolic"))
         if self.page.item.status == runner.RUNNING and cfg.guest.agent:
             self._guest_ips(g, cfg)
 

@@ -8,10 +8,10 @@ import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
+from gi.repository import Adw, GLib, Gtk  # noqa: E402
 
 from rehome import importer, jobs  # noqa: E402
-from rehome.errors import Cancelled, RehomeError  # noqa: E402
+from rehome.errors import Cancelled  # noqa: E402
 from rehome.patch import profiles  # noqa: E402
 from rehome.ui.common import combo_row, combo_value, run_async, show_error  # noqa: E402
 from rehome.ui.progress import ProgressPanel  # noqa: E402
@@ -133,19 +133,24 @@ class ImportWizard(Adw.Window):
                 return
             for i in range(files.get_n_items()):
                 path = files.get_item(i).get_path()
-                if path and path not in self.images:
-                    self.images.append(path)
-                    r = Adw.ActionRow(title=GLib.markup_escape_text(os.path.basename(path)),
-                                      subtitle=GLib.markup_escape_text(path))
-                    r.add_prefix(Gtk.Image.new_from_icon_name("media-floppy-symbolic"))
-                    check = Gtk.CheckButton(active=True)
-                    check.connect("toggled", lambda *_: self._update_next())
-                    r.add_suffix(check)
-                    r.set_activatable_widget(check)
-                    self.images_group.add(r)
-                    self.disk_checks[path] = check
-            self._update_next()
+                if path:
+                    self.add_image(path)
         dlg.open_multiple(self, None, done)
+
+    def add_image(self, path: str):
+        if path in self.images:
+            return
+        self.images.append(path)
+        r = Adw.ActionRow(title=GLib.markup_escape_text(os.path.basename(path)),
+                          subtitle=GLib.markup_escape_text(path))
+        r.add_prefix(Gtk.Image.new_from_icon_name("media-floppy-symbolic"))
+        check = Gtk.CheckButton(active=True)
+        check.connect("toggled", lambda *_: self._update_next())
+        r.add_suffix(check)
+        r.set_activatable_widget(check)
+        self.images_group.add(r)
+        self.disk_checks[path] = check
+        self._update_next()
 
     def _selected_sources(self) -> list[str]:
         return [p for p, c in self.disk_checks.items() if c.get_active()]

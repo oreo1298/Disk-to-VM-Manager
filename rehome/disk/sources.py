@@ -156,6 +156,10 @@ def _disk_source(dev: dict, usage: dict[str, str]) -> Source:
                transport=(dev.get("tran") or "").lower(), removable=bool(dev.get("rm")),
                rotational=bool(dev.get("rota")), partition_table=dev.get("pttype") or "")
     vendor = (dev.get("vendor") or "").strip()
+    if vendor.lower().startswith("0x"):          # virtio and some NVMe report a PCI id
+        vendor = ""
+    if not (vendor or s.model) and s.transport == "virtio":
+        vendor = "Virtual disk"
     s.label = " ".join(x for x in (vendor, s.model) if x) or s.path
     for child in dev.get("children") or []:
         s.partitions.append(Partition(path=child.get("path") or "", size=int(child.get("size") or 0),

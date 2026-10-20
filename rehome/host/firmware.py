@@ -17,7 +17,6 @@ import fnmatch
 import json
 import os
 from dataclasses import dataclass, field
-from pathlib import Path
 
 SYSTEM_DIRS = ("/usr/share/qemu/firmware", "/etc/qemu/firmware")
 

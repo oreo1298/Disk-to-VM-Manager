@@ -10,11 +10,10 @@ from __future__ import annotations
 import json
 import logging
 import os
-import shutil
 import signal
 import subprocess
 import time
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from pathlib import Path
 
 from rehome import paths
@@ -26,7 +25,7 @@ from rehome.util.proc import quote, run as run_cmd, which
 from rehome.vm import hooks
 from rehome.vm.config import VMConfig
 from rehome.vm.qemu_cmd import LaunchOptions, RuntimePaths, build
-from rehome.vm.qmp import QMP, QmpClosed, QmpError
+from rehome.vm.qmp import QMP, QmpClosed
 
 log = logging.getLogger(__name__)
 

@@ -199,7 +199,7 @@ def hal_check(ctx) -> PatchResult:
             m.cpus = 1
             return PatchResult("", "", "applied",
                                f"This Windows uses a uniprocessor HAL ({hal}); the VM gets one CPU. "
-                               "(Windows would ignore extra CPUs anyway.)", [f"CPUs → 1"])
+                               "(Windows would ignore extra CPUs anyway.)", ["CPUs → 1"])
         return PatchResult("", "", "not-needed", f"Uniprocessor HAL ({hal}) and one virtual CPU.")
     if hal == "hal.dll":
         return PatchResult("", "", "info", "Standard PC (non-ACPI) HAL: shut Windows down, then "

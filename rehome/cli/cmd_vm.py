@@ -9,7 +9,7 @@ import time
 
 from rehome.cli.output import bold, c, dim, print_json, status, table
 from rehome.errors import RehomeError
-from rehome.util.units import human, parse_size
+from rehome.util.units import human
 
 
 def register(sub) -> None:

@@ -13,7 +13,6 @@ from gi.repository import Adw, GLib, Gtk  # noqa: E402
 from rehome.host import info as host_info  # noqa: E402
 from rehome.ui.common import combo_row, combo_value, confirm, run_async, show_error  # noqa: E402
 from rehome.util.units import human, parse_size  # noqa: E402
-from rehome.vm import config as C  # noqa: E402
 from rehome.vm import disks as disk_mod  # noqa: E402
 from rehome.vm import edit  # noqa: E402
 from rehome.vm.config import CdRom, Disk, Nic, Share, VMConfig  # noqa: E402

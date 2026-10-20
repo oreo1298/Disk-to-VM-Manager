@@ -52,7 +52,11 @@ def test_framebuffer_keyboard_mouse(running_vm):
     frames = []
     client.connect("scanout", lambda c, w, h: frames.append(("scanout", w, h)))
     client.connect("update", lambda c, *r: frames.append(("update",) + r))
+    t0 = time.monotonic()
     client.connect_qmp(runner.runtime(cfg).qmp_ui)
+    # Regression: a blocking call after RegisterListener used to deadlock
+    # against QEMU until the 25 s D-Bus timeout.
+    assert time.monotonic() - t0 < 5, "connecting to the display took too long"
     assert client.label and client.console_ids
     assert pump(lambda: any(f[0] == "scanout" for f in frames)), "no scanout received"
     assert client.width >= 640 and len(client.fb) == client.width * client.height * 4
@@ -63,6 +67,14 @@ def test_framebuffer_keyboard_mouse(running_vm):
         pump(lambda: False, 0.05)
     assert pump(lambda: "dbus ok" in runner.screen_text(cfg).split("echo dbus ok")[-1], 30)
     assert any(f[0] == "update" for f in frames), "no incremental updates"
+    # The client follows video mode changes (QEMU 8 only changes the console's
+    # Width/Height properties): its size matches QEMU's own screendump.
+    shot = cfg.dir / "dump.png"
+    runner.screenshot(cfg, shot)
+    head = shot.read_bytes()[:24]
+    assert (client.width, client.height) == (int.from_bytes(head[16:20], "big"),
+                                             int.from_bytes(head[20:24], "big"))
+    assert len(client.fb) == client.width * client.height * 4
     # The framebuffer is not blank (text is drawn in light grey on black).
     assert client.fb.count(0) < len(client.fb)
     client.mouse_rel(5, 5)

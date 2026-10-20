@@ -7,8 +7,6 @@ and (where the image is bootable) that the VM boots.
 """
 
 import hashlib
-import os
-import shutil
 import time
 
 import pytest
@@ -20,7 +18,7 @@ try:
 except ImportError:
     pytest.skip("libguestfs Python bindings are not installed", allow_module_level=True)
 
-from tests.fixtures import freedos, regf
+from tests.fixtures import freedos
 from tests.fixtures import windows as W
 
 MOUSE_CLASS = "{4D36E96F-E325-11CE-BFC1-08002BE10318}"

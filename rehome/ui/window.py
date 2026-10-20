@@ -24,11 +24,13 @@ class VmRow(Gtk.ListBoxRow):
         super().__init__()
         self.vm_id = vm_id
         box = Gtk.Box(spacing=12, margin_top=8, margin_bottom=8, margin_start=8, margin_end=8)
-        self.thumb = Gtk.Picture(can_shrink=True, content_fit=Gtk.ContentFit.COVER,
-                                 width_request=72, height_request=48)
-        self.thumb.add_css_class("card")
-        frame = Gtk.Frame(child=self.thumb)
-        frame.set_size_request(72, 48)
+        self.thumb = Gtk.Picture(can_shrink=True, content_fit=Gtk.ContentFit.COVER)
+        placeholder = Gtk.Image(icon_name="computer-symbolic", pixel_size=24)
+        placeholder.add_css_class("dim-label")
+        self.thumb_stack = Gtk.Stack(width_request=72, height_request=48)
+        self.thumb_stack.add_named(placeholder, "off")
+        self.thumb_stack.add_named(self.thumb, "picture")
+        frame = Gtk.Frame(child=self.thumb_stack, valign=Gtk.Align.CENTER)
         box.append(frame)
         text = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, valign=Gtk.Align.CENTER, hexpand=True)
         self.name = Gtk.Label(xalign=0, ellipsize=3)
@@ -50,14 +52,17 @@ class VmRow(Gtk.ListBoxRow):
         self.sub.set_label(f"{state} · {cfg.os.name or cfg.os.family}")
         self.icon.set_from_icon_name(STATE_ICON.get(item.status, "computer-symbolic"))
         self.icon.set_tooltip_text(state)
-        tex = load_texture(item.thumbnail)
+        live = item.status in (runner.RUNNING, runner.PAUSED, runner.SAVED)
+        tex = load_texture(item.thumbnail) if live else None
         self.thumb.set_paintable(tex)
+        self.thumb_stack.set_visible_child_name("picture" if tex is not None else "off")
         self.update_property([Gtk.AccessibleProperty.LABEL], [f"{cfg.name}, {state}"])
 
 
 class MainWindow(Adw.ApplicationWindow):
     def __init__(self, app):
-        super().__init__(application=app, title=APP_NAME, default_width=1180, default_height=780)
+        super().__init__(application=app, title=APP_NAME, default_width=1180, default_height=780,
+                         width_request=360, height_request=294)
         self.app = app
         self.store = VmStore()
         self.rows: dict[str, VmRow] = {}
@@ -97,7 +102,7 @@ class MainWindow(Adw.ApplicationWindow):
 
         # Content
         self.empty = self._empty_page()
-        self.content_page = Adw.NavigationPage(title="", child=self.empty)
+        self.content_page = Adw.NavigationPage(title="Welcome", child=self.empty)
         self.split.set_content(self.content_page)
         self.toast_overlay.set_child(self.split)
 
@@ -105,6 +110,10 @@ class MainWindow(Adw.ApplicationWindow):
         bp.add_setter(self.split, "collapsed", True)
         self.add_breakpoint(bp)
         self.set_content(self.toast_overlay)
+
+        from rehome.ui.shortcuts import build as build_shortcuts
+        self.set_help_overlay(build_shortcuts())
+        app.set_accels_for_action("win.show-help-overlay", ["<Control>question"])
 
         self.store.connect("changed", self._store_changed)
         self.store.connect("item-updated", self._item_updated)
@@ -160,7 +169,7 @@ class MainWindow(Adw.ApplicationWindow):
             self.listbox.select_row(self.rows[selected])
         elif selected and selected not in self.rows:
             self.content_page.set_child(self.empty)
-            self.content_page.set_title("")
+            self.content_page.set_title("Welcome")
         pending = getattr(self, "_select_after_refresh", None)
         if pending and pending in self.rows:
             self._select_after_refresh = None

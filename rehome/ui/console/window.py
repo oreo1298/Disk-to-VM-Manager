@@ -10,7 +10,7 @@ import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-from gi.repository import Adw, Gdk, Gio, GLib, Gtk  # noqa: E402
+from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
 
 from rehome.ui.common import confirm, run_async, show_error  # noqa: E402
 from rehome.ui.console.dbus_display import DisplayClient  # noqa: E402
@@ -50,7 +50,7 @@ class ConsoleWindow(Adw.ApplicationWindow):
         self.usb_popover.connect("show", lambda *_: self._fill_usb())
         header.pack_start(self.usb_btn)
 
-        fs = Gtk.Button(icon_name="view-fullscreen-symbolic", tooltip_text="Full screen (F11)")
+        fs = Gtk.Button(icon_name="view-fullscreen-symbolic", tooltip_text="Full screen (Ctrl+Alt+F)")
         fs.update_property([Gtk.AccessibleProperty.LABEL], ["Full screen"])
         fs.connect("clicked", lambda *_: self.toggle_fullscreen())
         header.pack_end(fs)

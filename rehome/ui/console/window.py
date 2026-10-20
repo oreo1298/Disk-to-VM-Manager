@@ -20,6 +20,13 @@ from rehome.vm import library, runner, usb  # noqa: E402
 log = logging.getLogger(__name__)
 
 
+# Combinations the host desktop would otherwise catch.
+KEY_COMBOS = [("Ctrl+Alt+Delete", "ctrl-alt-delete"), ("Ctrl+Alt+Backspace", "ctrl-alt-backspace"),
+              ("Ctrl+Alt+F1", "ctrl-alt-f1"), ("Ctrl+Alt+F2", "ctrl-alt-f2"),
+              ("Ctrl+Alt+F7", "ctrl-alt-f7"), ("Alt+Tab", "alt-tab"), ("Alt+F4", "alt-f4"),
+              ("Print Screen", "print"), ("Super (Windows key)", "meta")]
+
+
 class ConsoleWindow(Adw.ApplicationWindow):
     def __init__(self, app, cfg):
         super().__init__(application=app, title=cfg.name, default_width=1060, default_height=760)
@@ -69,6 +76,10 @@ class ConsoleWindow(Adw.ApplicationWindow):
         view.append("Resize Guest with Window", "win.resize-guest")
         view.append("Take Screenshot…", "win.screenshot")
         menu.append_section(None, view)
+        keys = Gio.Menu()
+        for label, combo in KEY_COMBOS:
+            keys.append(label, f"win.send-keys::{combo}")
+        menu.append_submenu("Send Keys", keys)
         mb = Gtk.MenuButton(icon_name="open-menu-symbolic", menu_model=menu, tooltip_text="VM menu")
         mb.update_property([Gtk.AccessibleProperty.LABEL], ["VM menu"])
         header.pack_end(mb)
@@ -123,6 +134,10 @@ class ConsoleWindow(Adw.ApplicationWindow):
                                          lambda: self._op(runner.force_off, "Turned off"),
                                          destructive=True))
         act("screenshot", self._screenshot)
+        send = Gio.SimpleAction.new("send-keys", GLib.VariantType.new("s"))
+        send.connect("activate", lambda _a, combo: self.view and
+                     self.view.send_combo(combo.get_string().split("-")))
+        self.add_action(send)
         scale = Gio.SimpleAction.new_stateful("scale", None, GLib.Variant("b", True))
         scale.connect("change-state", self._scale_changed)
         self.add_action(scale)

@@ -291,6 +291,8 @@ def start(cfg: VMConfig, *, headless: bool = False, paused: bool = False,
     pass_fds: list[int] = []
     fd_args: list[str] = []
     opened: list[int] = []
+    prepared = False
+    proc = None
     try:
         block_disks = [d for d in cfg.disks
                        if d.source and d.source.mode == "linked" and d.source.kind == "block"]
@@ -311,11 +313,13 @@ def start(cfg: VMConfig, *, headless: bool = False, paused: bool = False,
             from rehome.disk import ewf
             for d in ewf_disks:
                 opts.source_paths[d.id] = ewf.ensure_mounted(d.source.path)
-        opts.extra_args = fd_args + opts.extra_args
+        # A failing prepare hook stops the start before anything ran.
+        hook_args = hooks.run("prepare", cfg, args_file=rt.run / "hook-qemu-args")
+        prepared = True
+        opts.extra_args = fd_args + opts.extra_args + hook_args
         plan = build(cfg, caps, rt, opts)
         for w in plan.warnings:
             log.warning("%s", w)
-        hooks.run("prepare", cfg)
         try:
             _start_sidecars(plan.sidecars, rt)
         except SidecarFailed as e:
@@ -334,16 +338,25 @@ def start(cfg: VMConfig, *, headless: bool = False, paused: bool = False,
                     f"--unit=rehome-{cfg.short_id}-{int(time.time())}",
                     "-p", f"CPUQuota={cfg.machine.cpu_quota_pct}%", "--"] + argv
         proc = _launch(cfg, argv, pass_fds, log_dir / "qemu.log", choice, plan.warnings)
+        started_at = time.time()
+        _wait_ready(cfg, proc, rt, log_dir / "qemu.log")
+        if opts.incoming:
+            _restore(cfg, saved)
+    except BaseException:
+        if proc is not None and proc.poll() is None:
+            # Started but unusable (e.g. the saved state did not restore).
+            proc.kill()
+            proc.wait(timeout=30)
+            _stop_sidecars(rt)
+        if prepared:
+            _undo_prepare(cfg)
+        raise
     finally:
         for fd in opened:
             try:
                 os.close(fd)
             except OSError:
                 pass
-    started_at = time.time()
-    _wait_ready(cfg, proc, rt, log_dir / "qemu.log")
-    if opts.incoming:
-        _restore(cfg, saved)
     meta = {"pid": proc.pid, "started_at": started_at, "accel": choice.accel,
             "console": plan.console, "warnings": plan.warnings, "argv": argv}
     _state_file(cfg).write_text(json.dumps(meta, indent=2))
@@ -356,6 +369,14 @@ def start(cfg: VMConfig, *, headless: bool = False, paused: bool = False,
             library.save(fresh)
     hooks.run("started", cfg)
     return state(cfg)
+
+
+def _undo_prepare(cfg: VMConfig) -> None:
+    """The start failed after the prepare hooks ran: let them clean up."""
+    try:
+        hooks.run("stopped", cfg)
+    except RehomeError as e:
+        log.warning("%s", e)
 
 
 class SidecarFailed(RehomeError):

@@ -75,5 +75,6 @@ def gdk_keycode_to_qnum(hw_keycode: int) -> int | None:
 
 
 # A few qnums the console needs by name.
-QNUM = {"ctrl": 0x1D, "alt": 0x38, "delete": 0xD3, "backspace": 0x0E, "f1": 0x3B,
-        "shift": 0x2A, "meta": 0xDB, "print": 0xB7}
+QNUM = {"ctrl": 0x1D, "alt": 0x38, "delete": 0xD3, "backspace": 0x0E, "tab": 0x0F,
+        "shift": 0x2A, "meta": 0xDB, "print": 0xB7, "sysrq": 0x54, "esc": 0x01,
+        **{f"f{i}": 0x3A + i for i in range(1, 11)}, "f11": 0x57, "f12": 0x58}

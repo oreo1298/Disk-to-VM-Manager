@@ -63,6 +63,10 @@ def _log(cfg: VMConfig, result: PatchResult) -> None:
 
 def run(cfg: VMConfig, o: DetectedOS, options, progress: jobs.Progress | None = None,
         only: list[str] | None = None, fd_provider=None) -> list[PatchResult]:
+    from rehome.vm import runner
+    if runner.state(cfg).active:
+        raise RehomeError("Turn the VM off before running the automatic fixes.",
+                          fix=f"Run `rehome force-off \"{cfg.name}\"` (or shut it down), then try again.")
     profile = profiles.get(cfg.profile) if cfg.profile else profiles.select(o.facts())
     ids = only or patch_list(profile, o)
     specs = [registry.get(i) for i in ids]

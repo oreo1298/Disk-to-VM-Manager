@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 from typing import Callable
 
-from rehome.inspect import layout, legacy, linux, windows
+from rehome.inspect import bootchain, layout, legacy, linux, windows
 from rehome.inspect.gfs import Drive, ci_path, mounted, read_text, session
 from rehome.inspect.model import DetectedOS, InspectionReport
 
@@ -245,6 +245,14 @@ def inspect(drives: list[Drive], keys: list[str] | None = None,
                     lay = report.disks[o.disk_index] if o.disk_index < len(report.disks) else None
                     if lay:
                         o.details["mbr_loader"] = lay.mbr_loader
+                    try:
+                        bc = bootchain.analyze(g, dev)
+                        o.details["boot_chain"] = bc.to_dict()
+                        if bc.problems:
+                            o.notes.append(" ".join(bc.problems) + " Rehome repairs this in the VM's "
+                                           "copy of the disk (the original is not changed).")
+                    except RuntimeError as e:
+                        log.debug("boot chain of %s: %s", dev, e)
                     report.oses.append(o)
         for disk in report.disks:
             for o in layout.special_oses(disk):

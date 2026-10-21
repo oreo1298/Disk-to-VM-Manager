@@ -33,7 +33,7 @@ cpu_quota_pct = 100
 disk_size = "8G"
 
 [patches]
-list = ["win9x.report", "win9x.ram_limit", "win9x.vcache_limit"]
+list = ["dos.boot_record", "win9x.report", "win9x.ram_limit", "win9x.vcache_limit"]
 
 [notes]
 list = [

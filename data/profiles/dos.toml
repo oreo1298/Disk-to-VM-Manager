@@ -29,7 +29,7 @@ vdagent = false
 disk_size = "2G"             # FAT16 tops out at 2 GiB
 
 [patches]
-list = ["dos.report"]
+list = ["dos.boot_record", "dos.report"]
 
 [notes]
 list = [

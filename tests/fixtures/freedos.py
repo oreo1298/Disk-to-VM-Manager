@@ -77,7 +77,14 @@ def _mkfs() -> str:
 
 
 def build(out: str | os.PathLike, size_mib: int = 64, label: str = "FREEDOS",
-          extra_files: dict[str, bytes] | None = None) -> Path:
+          extra_files: dict[str, bytes] | None = None, fat: int = 16, boot_code: bool = True,
+          active: bool = True, mbr_code: bool = True) -> Path:
+    """A bootable FreeDOS disk; the last four options break it like Linux tools do.
+
+    ``boot_code=False`` keeps mkfs.fat's "This is not a bootable disk" boot
+    sector, ``active=False`` marks no partition active, ``mbr_code=False``
+    leaves the MBR without code.
+    """
     out = Path(out)
     with tempfile.TemporaryDirectory() as td:
         t = Path(td)
@@ -99,17 +106,21 @@ def build(out: str | os.PathLike, size_mib: int = 64, label: str = "FREEDOS",
         total = size_mib * 2**20 // SECTOR
         part_sectors = total - start
         part = t / "part.img"
-        subprocess.run([_mkfs(), "-F", "16", "-n", label, "-h", str(start), "-g", f"{HEADS}/{SPT}",
+        subprocess.run([_mkfs(), "-F", str(fat), *(["-s", "1"] if fat == 32 else []), "-n", label,
+                        "-h", str(start), "-g", f"{HEADS}/{SPT}",
                         "-C", str(part), str(part_sectors * SECTOR // 1024)],
                        check=True, capture_output=True)
-        # Merge: FreeDOS boot code + the BPB mkfs.fat computed.
-        with open(part, "r+b") as f:
-            vbr = bytearray(f.read(SECTOR))
-            merged = bytearray(boot)
-            merged[0x03:0x3E] = vbr[0x03:0x3E]
-            merged[0x24] = 0x80                     # boot drive: first hard disk
-            f.seek(0)
-            f.write(merged)
+        if boot_code:
+            if fat != 16:
+                raise ValueError("FreeDOS boot code is only built for FAT16")
+            # Merge: FreeDOS boot code + the BPB mkfs.fat computed.
+            with open(part, "r+b") as f:
+                vbr = bytearray(f.read(SECTOR))
+                merged = bytearray(boot)
+                merged[0x03:0x3E] = vbr[0x03:0x3E]
+                merged[0x24] = 0x80                     # boot drive: first hard disk
+                f.seek(0)
+                f.write(merged)
         files = {
             "KERNEL.SYS": kernel,
             "COMMAND.COM": command,
@@ -126,10 +137,11 @@ def build(out: str | os.PathLike, size_mib: int = 64, label: str = "FREEDOS",
             src.write_bytes(data)
             subprocess.run(["mcopy", "-i", str(part), str(src), f"::{name}"], check=True,
                            capture_output=True, env=env)
-        mbr_code = Path(next(p for p in MBR_CANDIDATES if os.path.exists(p))).read_bytes()[:440]
-        entry = bytes([0x80]) + _chs(start) + bytes([0x06]) + _chs(total - 1) + \
-            struct.pack("<II", start, part_sectors)
-        mbr = mbr_code + b"\x00" * (446 - len(mbr_code)) + entry + b"\x00" * 48 + b"\x55\xaa"
+        code = Path(next(p for p in MBR_CANDIDATES if os.path.exists(p))).read_bytes()[:440] \
+            if mbr_code else b""
+        entry = bytes([0x80 if active else 0]) + _chs(start) + bytes([0x0C if fat == 32 else 0x06]) + \
+            _chs(total - 1) + struct.pack("<II", start, part_sectors)
+        mbr = code + b"\x00" * (446 - len(code)) + entry + b"\x00" * 48 + b"\x55\xaa"
         assert len(mbr) == SECTOR
         with open(out, "wb") as f:
             f.write(mbr)

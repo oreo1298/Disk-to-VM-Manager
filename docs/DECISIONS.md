@@ -472,3 +472,30 @@ official repositories.
     forces the C-library path, and the whole integration suite passes with
     it.
 
+## D24. Repairing the BIOS boot chain of DOS-era disks
+
+A Windows 98 VDI stopped at "This is not a bootable disk. Please insert a
+bootable floppy". That is the placeholder boot code Linux's `mkfs.fat`
+writes: the files had been copied onto a partition formatted on Linux, so
+the partition never received Microsoft's boot code.
+
+- `rehome/inspect/bootchain.py` reads the chain: the MBR code, which
+  partition is active, and the boot sector code of the system's partition.
+- The `dos.boot_record` fix repairs what is missing, in the overlay:
+  - an MBR without code gets SYSLINUX's `mbr.bin` (the partition table is
+    kept);
+  - the system's partition is marked active;
+  - an unbootable boot sector is replaced by SYSLINUX, whose `chain.c32`
+    starts the system's own loader: `msdos7=/io.sys` for Windows 9x and
+    MS-DOS 7, `msdos=` for MS-DOS 6, `pcdos=` for PC DOS, `freedos=` for
+    FreeDOS.
+- Microsoft's boot code cannot be shipped, and Windows 98's `SYS.COM` needs
+  DOS to run; SYSLINUX is free and documents these modes.
+- Files are written before the boot sector, so a failure leaves the boot
+  code as it was.
+- **Tested** with FreeDOS disks broken both ways: FAT16 with only the
+  placeholder, and FAT32 with no MBR code and no active partition. Both
+  boot after the repair, with both libguestfs backends, and the sources
+  stay unchanged. The `msdos7` path to a real Windows 98 `IO.SYS` still
+  needs a real Windows 98 disk to test.
+

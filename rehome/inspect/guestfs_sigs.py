@@ -90,6 +90,7 @@ FUNCS = {
     'set_smp': ('guestfs_set_smp', 'err', [('smp', 'int')], []),
     'set_trace': ('guestfs_set_trace', 'err', [('trace', 'int')], []),
     'shutdown': ('guestfs_shutdown', 'err', [], []),
+    'syslinux': ('guestfs_syslinux_argv', 'err', [('device', 'str')], [('directory', 'str', 0)]),
     'umount': ('guestfs_umount_opts_argv', 'err', [('pathordevice', 'str')], [('force', 'int', 0), ('lazyunmount', 'int', 1)]),
     'umount_all': ('guestfs_umount_all', 'err', [], []),
     'upload': ('guestfs_upload', 'err', [('filename', 'str'), ('remotefilename', 'str')], []),

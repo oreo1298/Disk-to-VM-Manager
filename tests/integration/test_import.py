@@ -238,3 +238,35 @@ def test_physical_disk_import_with_exclusive_helper(images, monkeypatch, nbd_bac
     assert d.source.kind == "block" and d.source.sha256_before == before
     assert [r["unchanged"] for r in importer.verify(cfg, fd_provider=exclusive_helper)] == [True]
     assert sha256(src) == before
+
+
+@pytest.mark.skipif(bool(freedos.available()), reason="cannot build FreeDOS image")
+@pytest.mark.parametrize("broken", [
+    dict(boot_code=False),                                          # mkfs.fat placeholder only
+    dict(fat=32, boot_code=False, active=False, mbr_code=False),     # everything missing
+])
+def test_dos_disk_prepared_on_linux_is_made_bootable(images, broken):
+    """A DOS/Windows 9x disk whose files were copied onto a Linux-formatted partition.
+
+    Regression for a Windows 98 VDI that stopped at mkfs.fat's "This is not a
+    bootable disk" message: Rehome repairs the boot chain in the overlay with
+    SYSLINUX + chain.c32, and the source stays unchanged.
+    """
+    from rehome import importer
+    from rehome.vm import runner
+    src = images / f"freedos-broken-{len(broken)}.img"
+    if not src.exists():
+        freedos.build(src, **broken)
+    before = sha256(src)
+    a = importer.analyze([str(src)], smart_check=False)
+    assert a.os.distro == "freedos" and a.os.details["boot_chain"]["problems"]
+    cfg = importer.run(a, importer.ImportOptions(mode="linked"))
+    try:
+        runner.start(cfg, headless=True)
+        deadline = time.monotonic() + 90
+        while time.monotonic() < deadline and freedos.MARKER not in runner.screen_text(cfg):
+            time.sleep(0.5)
+        assert freedos.MARKER in runner.screen_text(cfg), runner.screen_text(cfg)
+    finally:
+        runner.force_off(cfg)
+    assert sha256(src) == before

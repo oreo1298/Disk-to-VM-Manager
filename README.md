@@ -16,7 +16,7 @@ Rehome is a Linux desktop app for QEMU/KVM. It does two jobs:
 
 Everything the GUI does is also available on the command line (`rehome --help`).
 
-> **Status: 0.1.2, early release.** The engine, CLI and GUI work, and they are
+> **Status: 0.1.3, early release.** The engine, CLI and GUI work, and they are
 > tested on synthetic disks and on real FreeDOS, ReactOS and Ubuntu guests. Real
 > Windows and 9x installations were not tested yet; see
 > [What has been tested](#what-has-been-tested).
@@ -191,7 +191,15 @@ chosen per operating system from profiles in `data/profiles/`:
   - Rewrites device names in `fstab` and the boot loader.
   - Falls back from proprietary GPU drivers.
   - Fixes the network configuration that was tied to old hardware.
-- **DOS, BSD**: chooses suitable hardware and reports what was found.
+- **DOS, Windows 9x**
+  - Repairs the BIOS boot chain when the disk was prepared on Linux:
+    - a partition formatted with `mkfs.fat` ("This is not a bootable
+      disk"),
+    - no active partition,
+    - an MBR without boot code.
+  - The repair uses SYSLINUX's `chain.c32`, which starts the system's own
+    `IO.SYS` or `KERNEL.SYS`.
+- **BSD**: chooses suitable hardware and reports what was found.
 
 Rehome warns about two cases and decides nothing for you:
 

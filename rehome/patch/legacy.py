@@ -2,10 +2,37 @@
 
 from __future__ import annotations
 
+import os
 import re
 
+from rehome.errors import RehomeError
+from rehome.inspect import bootchain
 from rehome.inspect.gfs import ci_path, mounted, read_text
 from rehome.patch.registry import CONFIG, PatchResult, patch
+
+# Where distributions keep SYSLINUX's BIOS files (Arch, Debian/Ubuntu, Fedora/openSUSE).
+SYSLINUX_DIRS = ("/usr/lib/syslinux/bios", "/usr/lib/syslinux/modules/bios", "/usr/share/syslinux",
+                 "/usr/lib/syslinux")
+SYSLINUX_MBR = ("/usr/lib/syslinux/bios/mbr.bin", "/usr/lib/syslinux/mbr/mbr.bin",
+                "/usr/share/syslinux/mbr.bin", "/usr/lib/syslinux/mbr.bin")
+CHAIN_MODULES = ("chain.c32", "libcom32.c32", "libutil.c32")
+
+
+def _syslinux_modules() -> str | None:
+    for d in SYSLINUX_DIRS:
+        if all(os.path.isfile(os.path.join(d, m)) for m in CHAIN_MODULES):
+            return d
+    return None
+
+
+def _chain_loader(o) -> str | None:
+    """chain.c32 option that starts this system's DOS kernel file."""
+    # Paths are absolute: chain.c32 resolves them from SYSLINUX's directory.
+    if o.family == "win9x":
+        return "msdos7=/io.sys"                 # Windows 95/98/Me: MS-DOS 7.x IO.SYS
+    ver = o.version or ""
+    return {"freedos": "freedos=/kernel.sys", "pcdos": "pcdos=/ibmbio.com",
+            "msdos": "msdos7=/io.sys" if ver.startswith("7") else "msdos=/io.sys"}.get(o.distro)
 
 
 @patch("dos.report", "DOS hardware", kind=CONFIG, families=("dos",))
@@ -62,6 +89,70 @@ def vcache_limit(ctx) -> PatchResult:
         g.write(path, text.encode("latin-1"))
     return PatchResult("", "", "applied", "Set [vcache] MaxFileCache=262144 in SYSTEM.INI.",
                        [f"{path}: [vcache] MaxFileCache=262144"])
+
+
+@patch("dos.boot_record", "Make the disk bootable", families=("dos", "win9x"))
+def boot_record(ctx) -> PatchResult:
+    """Repair the BIOS boot chain (MBR code, active flag, boot sector) in the overlay.
+
+    Disks prepared on Linux often cannot start DOS or Windows 9x: mkfs.fat
+    writes placeholder boot code, and no partition may be marked active. The
+    boot sector is replaced by SYSLINUX, whose chain.c32 starts the system's
+    own IO.SYS / KERNEL.SYS (Rehome cannot ship Microsoft's boot code).
+    """
+    g, o = ctx.g, ctx.os
+    bc = bootchain.analyze(g, ctx.root)
+    ctx.os.details["boot_chain"] = bc.to_dict()
+    if bc.scheme == "gpt":
+        return PatchResult("", "", "skipped", bc.problems[0])
+    if not bc.problems:
+        return PatchResult("", "", "not-needed", "The disk's boot code and active partition are fine.")
+    changes = []
+    if bc.vbr_code in bootchain.UNBOOTABLE:
+        loader = _chain_loader(o)
+        modules = _syslinux_modules()
+        if not loader:
+            return PatchResult("", "", "skipped", " ".join(bc.problems) +
+                               f" Rehome has no boot loader for {o.name}.")
+        if not modules:
+            raise RehomeError("SYSLINUX is needed to make this disk bootable but is not installed.",
+                              fix="Install syslinux, then run the fixes again with "
+                                  "`rehome patch run VM --only dos.boot_record`.")
+        # Files first, boot code last: a failure leaves the boot sector untouched.
+        with mounted(g, ctx.root, readonly=False):
+            g.mkdir_p("/syslinux")
+            for m in CHAIN_MODULES:
+                g.upload(os.path.join(modules, m), f"/syslinux/{m}")
+            g.write("/syslinux/syslinux.cfg", (
+                "# Written by Rehome: this partition had no working boot code, so SYSLINUX\r\n"
+                f"# starts {o.name} through chain.c32 (in the VM's copy of the disk only).\r\n"
+                "DEFAULT system\r\nPROMPT 0\r\nTIMEOUT 0\r\n"
+                f"LABEL system\r\n  COM32 chain.c32\r\n  APPEND fs {loader}\r\n").encode())
+        try:
+            g.syslinux(ctx.root, directory="/syslinux")
+        except RuntimeError as e:
+            raise RehomeError("SYSLINUX could not be installed on the system's partition.",
+                              details=str(e)) from e
+        changes.append(f"{ctx.root}: boot sector replaced by SYSLINUX, which starts the system "
+                       f"with chain.c32 {loader} (/syslinux/syslinux.cfg)")
+    if bc.partition:
+        if bc.mbr_code in bootchain.UNBOOTABLE:
+            mbr = next((p for p in SYSLINUX_MBR if os.path.isfile(p)), None)
+            if not mbr:
+                raise RehomeError("The disk has no master boot record code, and SYSLINUX's "
+                                  "mbr.bin is not installed.", fix="Install syslinux.")
+            with open(mbr, "rb") as f:
+                g.pwrite_device(bc.disk, f.read()[:440], 0)     # keeps the partition table
+            changes.append(f"{bc.disk}: master boot record code written (SYSLINUX mbr.bin)")
+        if bc.active != [bc.partition]:
+            for p in g.part_list(bc.disk):
+                n = p["part_num"]
+                if n == bc.partition or n in bc.active:
+                    g.part_set_bootable(bc.disk, n, n == bc.partition)
+            changes.append(f"{bc.disk}: partition {bc.partition} marked active"
+                           + (f" (was: {', '.join(map(str, bc.active))})" if bc.active else ""))
+    return PatchResult("", "", "applied", " ".join(bc.problems) + " Fixed in the VM's disk.",
+                       changes)
 
 
 @patch("bsd.report", "BSD disk controller", kind=CONFIG, families=("bsd",))

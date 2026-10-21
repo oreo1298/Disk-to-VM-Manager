@@ -11,7 +11,7 @@
 %global __brp_python_bytecompile %{nil}
 
 Name:           rehome
-Version:        0.1.2
+Version:        0.1.3
 Release:        1%{?dist}
 Summary:        Turn installed operating systems into QEMU/KVM virtual machines
 License:        GPL-3.0-or-later
@@ -139,6 +139,9 @@ python3 packaging/layout.py install \
 %{_datadir}/icons/hicolor/symbolic/apps/io.github.oreo1298.Rehome-symbolic.svg
 
 %changelog
+* Wed Oct 21 2026 Rehome contributors - 0.1.3-1
+- Repair the BIOS boot chain of DOS and Windows 9x disks prepared on Linux.
+
 * Wed Oct 21 2026 Rehome contributors - 0.1.2-1
 - Use libguestfs' C library directly when its Python bindings are missing.
 

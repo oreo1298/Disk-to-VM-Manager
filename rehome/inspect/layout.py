@@ -55,7 +55,9 @@ def analyze_disk(g, index: int, device: str, filesystems: dict[str, str]) -> Dis
         head = g.pread_device(device, 64 * 512, 0)
     except RuntimeError:
         head = b""
-    lay.mbr_loader = mbr_loader(head[:440] + head[512:64 * 512])
+    # Sector 0's code, plus sectors 1-62 where GRUB keeps its core image. Sector 63
+    # is left out: it is often the first partition's own boot sector.
+    lay.mbr_loader = mbr_loader(head[:440] + head[512:63 * 512])
     if lay.scheme in ("gpt", "msdos"):
         for p in g.part_list(device):
             num = p["part_num"]

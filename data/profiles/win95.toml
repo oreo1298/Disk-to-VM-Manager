@@ -33,7 +33,7 @@ cpu_quota_pct = 100           # never idles: cap it at one host core
 disk_size = "2G"
 
 [patches]
-list = ["win9x.report", "win9x.ram_limit"]
+list = ["dos.boot_record", "win9x.report", "win9x.ram_limit"]
 
 [notes]
 list = [

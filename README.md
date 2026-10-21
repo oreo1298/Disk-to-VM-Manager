@@ -222,9 +222,14 @@ Click **+ → New Virtual Machine…** or run `rehome create`.
 
   For Windows, Rehome only opens Microsoft's official download page.
 - **Automatic installation.** You enter a user name and password, and the
-  installation runs without questions. This works for Windows (10, 11, Server)
-  and for Ubuntu, Debian, Fedora and openSUSE. It never bypasses product
-  activation: you give your own product key, or use evaluation media.
+  installation runs without questions.
+  - Supported for Windows (10, 11, Server) and for Ubuntu, Debian, Fedora
+    and openSUSE. So far only Ubuntu has been tested end to end; see
+    [What has been tested](#what-has-been-tested).
+  - It never bypasses product activation: you give your own product key, or
+    use evaluation media.
+  - When the installation is done, remove the answer files, which contain
+    your password, from the Summary tab.
 - **Advanced settings** (in the VM's **Settings** tab, or `rehome set`):
   - CPUs, memory, CPU model and acceleration,
   - disks, CD drives and floppy,
@@ -235,7 +240,7 @@ Click **+ → New Virtual Machine…** or run `rehome create`.
 
 ```sh
 rehome create --iso ~/Downloads/Win11_24H2.iso --unattended --user me
-rehome quick-create ubuntu-desktop --start
+rehome quick-create ubuntu-desktop-lts --start         # `rehome quick-create --list` shows all
 rehome create --os freedos1.3 --name DOS --memory 32M --disk 500M
 ```
 

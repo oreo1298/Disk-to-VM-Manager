@@ -42,6 +42,7 @@ class SummaryPage(Gtk.ScrolledWindow):
         for g in self.groups:
             self.pref.remove(g)
         self.groups = []
+        self._unattended(cfg)
         self._first_boot(cfg)
         self._system(cfg)
         self._import(cfg)
@@ -52,6 +53,29 @@ class SummaryPage(Gtk.ScrolledWindow):
         self.pref.add(g)
         self.groups.append(g)
         return g
+
+    def _unattended(self, cfg):
+        from rehome.media import unattended
+        try:
+            pending = unattended.pending(cfg)
+        except Exception:  # noqa: BLE001 - a broken state file must not hide the page
+            pending = False
+        if not pending:
+            return
+        g = self._group("Automatic installation",
+                        "The answer files contain your password (or its hash). When the "
+                        "installation has finished, remove them together with the answer disc.")
+        r = Adw.ActionRow(title="Answer files and disc")
+        btn = Gtk.Button(label="Remove", valign=Gtk.Align.CENTER)
+        btn.set_sensitive(self.page.item.status == runner.STOPPED)
+        if not btn.get_sensitive():
+            r.set_subtitle("Shut the VM down first")
+        btn.connect("clicked", lambda *_: run_async(
+            lambda: unattended.cleanup(self.page.cfg),
+            lambda _: (self.page.reload(), self.page.window.toast("Answer files removed")),
+            lambda e: show_error(self, e)))
+        r.add_suffix(btn)
+        g.add(r)
 
     def _first_boot(self, cfg):
         ii = cfg.import_info

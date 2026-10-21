@@ -950,8 +950,10 @@ rpm_removable() {
 
 remove_packages() {   # PKG... (only the ones still installed)
     local -a pkgs=("$@") still=() cmd=() removable=()
-    local p purge=0 failed=0
-    [[ "$MODE" == "purge" ]] && purge=1
+    local p failed=0
+    # Configuration files are kept, also with --purge: purging a dependency can
+    # delete system files it adopted (e.g. the locales package's purge removes
+    # /etc/default/locale), and --purge is about Rehome's own data.
     step "Removing the packages the installer added"
     info "${#pkgs[@]} package(s): ${pkgs[*]}"
     info "Packages that other installed software still needs are kept."
@@ -963,7 +965,6 @@ remove_packages() {   # PKG... (only the ones still installed)
             PRIV_ASK=0
             if priv "Mark the packages the installer added as automatically installed" apt-mark auto "${pkgs[@]}"; then
                 cmd=(apt-get autoremove)
-                ((purge)) && cmd+=(--purge)
                 ((ASSUME_YES || !HAVE_TTY)) && cmd=(env DEBIAN_FRONTEND=noninteractive "${cmd[@]}" -y)
                 if ! priv "Remove them and the dependencies only they needed" "${cmd[@]}"; then
                     failed=1
@@ -976,7 +977,6 @@ remove_packages() {   # PKG... (only the ones still installed)
         pacman)
             if ! confirm "Remove them?"; then info "Kept the packages."; return 0; fi
             cmd=(pacman -Rsu)
-            ((purge)) && cmd=(pacman -Rnsu)
             ((ASSUME_YES)) && cmd+=(--noconfirm)
             PRIV_ASK=0
             priv "Remove them and dependencies nothing else needs (-u skips any that other packages need)" "${cmd[@]}" "${pkgs[@]}" || failed=1

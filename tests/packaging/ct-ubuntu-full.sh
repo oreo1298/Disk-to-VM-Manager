@@ -16,7 +16,6 @@ M=/usr/local/share/rehome/install-manifest.json
 mkdir -p /work
 
 as_tester() { su - tester -c "export NO_COLOR=1; $1"; }
-installed_pkgs() { dpkg-query -W -f='${db:Status-Status} ${Package}\n' | awk '$1 == "installed" {print $2}' | sort; }
 mjson() { python3 -c "import json,sys; d=json.load(open('$M')); print($1)"; }
 
 section "setup"
@@ -43,8 +42,10 @@ tar -C /src --exclude=./tests/.cache --exclude=./.git -cf - . | (mkdir -p /home/
 chown -R tester:tester /home/tester/rehome
 as_tester 'mkdir -p ~/.local/share/rehome/vms/demo ~/.config/rehome && echo "name = \"demo\"" > ~/.local/share/rehome/vms/demo/vm.toml && echo "update_check = false" > ~/.config/rehome/settings.toml'
 DATA_SUM="$(cat /home/tester/.local/share/rehome/vms/demo/vm.toml /home/tester/.config/rehome/settings.toml | sha256sum)"
-installed_pkgs >/work/pkgs-before
+apt_installed >/work/pkgs-before
+apt_manual >/work/manual-before
 check "python3 is not installed before" test -z "$(grep -x python3 /work/pkgs-before)"
+cp -L /etc/default/locale /work/locale-before 2>/dev/null || : >/work/locale-before
 snapshot /work/s0
 
 section "install (./install.sh --yes, as tester)"
@@ -134,8 +135,7 @@ for p in "${added[@]}"; do
     [[ "$(dpkg-query -W -f='${db:Status-Status}' "$p" 2>/dev/null)" == installed ]] && { still=$((still + 1)); echo "still installed: $p"; }
 done
 check "all ${#added[@]} packages the installer added were removed" test "$still" -eq 0
-installed_pkgs >/work/pkgs-after
-check "installed package set is exactly as before the install" cmp -s /work/pkgs-before /work/pkgs-after
+check_apt_restored /work/pkgs-before /work/manual-before
 check "tester removed from the kvm group" bash -c '! id -nG tester | tr " " "\n" | grep -qx kvm'
 check "statoverride removed" bash -c "! dpkg-statoverride --list '$KERNEL' >/dev/null"
 check "kernel mode restored to 0600" test "$(stat -c %a "$KERNEL")" = 600
@@ -157,8 +157,8 @@ rm -rf /home/tester/rehome-next
 snapshot /work/s1
 d="$(snapdiff /work/s0 /work/s1)"
 printf '%s\n' "$d"
-note "$(grep -c '^[+-]' <<<"$d") paths differ; these are left by the distribution packages' own maintainer scripts (dpkg keeps them after removal, e.g. new system users' directories), not by Rehome"
-check "nothing of Rehome's is left" test -z "$(grep -i rehome <<<"$d")"
-check "nothing left under /usr/local" test -z "$(grep ' /usr/local' <<<"$d")"
+# --purge deleted the demo VM and settings created before the install, on purpose.
+check "the system locale setting is unchanged" same_content /work/locale-before /etc/default/locale
+check_no_rehome_leftovers "$d" '^- . /home/tester/\.(config|local/share|cache|local/state)/rehome(/|$)'
 
 finish

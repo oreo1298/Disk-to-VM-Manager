@@ -13,13 +13,12 @@ DEB="$1"
 export DEBIAN_FRONTEND=noninteractive
 mkdir -p /work
 
-installed_pkgs() { dpkg-query -W -f='${db:Status-Status} ${Package}\n' | awk '$1 == "installed" {print $2}' | sort; }
-
 section "setup"
 rm -f /etc/apt/apt.conf.d/docker-clean
 apt-get update -qq >/dev/null
 useradd -m -s /bin/bash tester
-installed_pkgs >/work/pkgs-before
+apt_installed >/work/pkgs-before
+apt_manual >/work/manual-before
 snapshot /work/s0
 
 section "apt-get install ./$(basename "$DEB")"
@@ -44,22 +43,27 @@ check "dpkg --verify rehome" test -z "$(dpkg --verify rehome)"
 check "helper shebang" test "$(head -1 /usr/libexec/rehome/rehome-helper)" = "#!/usr/bin/python3 -I"
 check "no bytecode in the package directories" test -z "$(python3 -c 'import pathlib; print(*pathlib.Path("/usr/lib/rehome").rglob("__pycache__"))')"
 
-section "apt-get purge rehome && apt-get autoremove --purge"
+section "apt-get purge rehome && apt-get autoremove"
 apt-get purge -y rehome >/work/purge.log 2>&1
 check "apt-get purge exit 0" test $? -eq 0
-apt-get autoremove --purge -y >>/work/purge.log 2>&1
+apt-get autoremove -y >>/work/purge.log 2>&1
 check "apt-get autoremove exit 0" test $? -eq 0
 tail -n 3 /work/purge.log
 left=0
 for f in "${files[@]}"; do [[ -e "$f" ]] && { left=$((left + 1)); echo "left: $f"; }; done
 check "all ${#files[@]} files removed" test "$left" -eq 0
 check "package directories removed" bash -c '! ls -d /usr/lib/rehome /usr/share/rehome /usr/libexec/rehome 2>/dev/null'
-installed_pkgs >/work/pkgs-after
-check "installed package set is exactly as before" cmp -s /work/pkgs-before /work/pkgs-after
+check "rehome is no longer installed" test -z "$(dpkg-query -W -f='${db:Status-Status}' rehome 2>/dev/null | grep -x installed)"
+check_apt_restored /work/pkgs-before /work/manual-before
+# Negative control: a package nothing pre-existing holds must be reported.
+apt-get install -y -qq hello >/dev/null 2>&1
+check "negative control: apt_kept.py flags an unexplained package (hello)" \
+    test "$(/opt/rhtest/python3 -I /src/tests/packaging/apt_kept.py /work/pkgs-before hello)" = hello
+apt-get purge -y -qq hello >/dev/null 2>&1
 rm -rf /home/tester/.cache/rehome
 snapshot /work/s1
 d="$(snapdiff /work/s0 /work/s1)"
 printf '%s\n' "$d"
-check "nothing of Rehome's is left" test -z "$(grep -i rehome <<<"$d")"
+check_no_rehome_leftovers "$d"
 
 finish

@@ -18,7 +18,6 @@ export DEBIAN_FRONTEND=noninteractive NO_COLOR=1
 M=/usr/local/share/rehome/install-manifest.json
 mkdir -p /work /root/.cache /root/.config /root/.local/share /root/.local/state
 
-installed_pkgs() { dpkg-query -W -f='${db:Status-Status} ${Package}\n' | awk '$1 == "installed" {print $2}' | sort; }
 mjson() { python3 -c "import json,sys; d=json.load(open('$M')); print($1)"; }
 pipe() {   # pipe RELEASE_JSON ARGS...: curl BASE/install.sh | bash -s -- ARGS
     local rel="$1"
@@ -30,7 +29,9 @@ section "setup"
 rm -f /etc/apt/apt.conf.d/docker-clean
 apt-get update -qq >/dev/null
 apt-get install -y -qq curl >/dev/null
-installed_pkgs >/work/pkgs-before
+apt_installed >/work/pkgs-before
+apt_manual >/work/manual-before
+cp -L /etc/default/locale /work/locale-before 2>/dev/null || : >/work/locale-before
 snapshot /work/s0
 
 section "install: curl | bash -s -- --yes --with-optional (latest release v0.1.0)"
@@ -69,15 +70,18 @@ check "exit 0" test "$rc" -eq 0
 left=0
 for f in "${files[@]}"; do [[ -e "$f" ]] && { left=$((left + 1)); echo "left: $f"; }; done
 check "all ${#files[@]} files removed" test "$left" -eq 0
-check "packages removed with apt-get autoremove --purge" contains "$out" "\$ env DEBIAN_FRONTEND=noninteractive apt-get autoremove --purge -y"
-installed_pkgs >/work/pkgs-after
-check "installed package set is exactly as before" cmp -s /work/pkgs-before /work/pkgs-after
+check "packages removed with apt-get autoremove (configuration files kept)" contains "$out" "\$ env DEBIAN_FRONTEND=noninteractive apt-get autoremove -y"
+check "the system locale setting survives (purging the locales package would delete it)" \
+    same_content /work/locale-before /etc/default/locale
+still=""
+for p in $pk; do [[ "$(dpkg-query -W -f='${db:Status-Status}' "$p" 2>/dev/null)" == installed ]] && still+=" $p"; done
+check "every package the installer recorded was removed${still:+ (still installed:$still)}" test -z "$still"
+check_apt_restored /work/pkgs-before /work/manual-before
 check "root's Rehome data deleted" bash -c '! ls -d /root/.cache/rehome /root/.local/share/rehome 2>/dev/null'
 snapshot /work/s1
 d="$(snapdiff /work/s0 /work/s1)"
 printf '%s\n' "$d"
-note "$(grep -c '^[+-]' <<<"$d") paths differ from before the install (left by the distribution packages' maintainer scripts)"
-check "nothing of Rehome's is left" test -z "$(grep -i rehome <<<"$d")"
+check_no_rehome_leftovers "$d"
 
 section "tampered release: checksum mismatch"
 out="$(pipe release-bad.json --yes --skip-deps 2>&1)"

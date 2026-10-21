@@ -268,6 +268,9 @@ config, so the UI can show a tree with a "Now" marker like Hyper-V.
 **Possible later:** a Flatpak "create and manage only" edition that uses
 host tools via `flatpak-spawn --host`. That would cost the sandbox anyway.
 
+The full evaluation (Snap classic, AppImage, a possible limited Flatpak
+edition) is in [PACKAGING.md](PACKAGING.md#flatpak-and-snap-decision-d13-extended).
+
 ## D14. Testing strategy
 
 - **Unit tests** (pytest) for detection parsing, command-line generation,
@@ -293,8 +296,10 @@ restricted network policy.
 - The install script was exercised in Docker containers.
 - Hosts blocked by the network policy (Arch, Debian, Fedora and openSUSE
   mirrors, FreeBSD and Microsoft downloads) limited some tests.
-  `README.md` → "Testing" lists exactly what was verified and what must be
-  re-run on a KVM host.
+- `/dev/kvm` was available during the first part of the work, then the
+  container moved to a host without it, so both paths were exercised.
+- [TESTING.md](TESTING.md) lists exactly what was verified and what must be
+  re-run on a KVM host with real images.
 
 ## D16. Console client details learned from QEMU 8.2
 

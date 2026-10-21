@@ -360,8 +360,8 @@ Tested so far (details and how to re-run: [docs/TESTING.md](docs/TESTING.md)):
     desktop.
 - **New VMs:**
   - ReactOS (NT family) from its official ISO boots to Setup,
-  - Ubuntu's automatic installation accepts Rehome's answers and starts
-    installing.
+  - Quick Create of Ubuntu Server with automatic installation: downloaded,
+    verified, installed without questions, and boots to the login prompt.
 - **Packaging:** the install script and the packages, in containers. See
   [docs/PACKAGING.md](docs/PACKAGING.md).
 

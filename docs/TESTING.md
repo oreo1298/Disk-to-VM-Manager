@@ -120,7 +120,8 @@ part of the work and no KVM later, so both paths were exercised.
 | Source safety | Source SHA-256 unchanged after import and boot of linked and copy imports. The polkit helper refuses the host's root disk and mounted disks, opens disks with `O_EXCL`, and the opened fd cannot write. Tested on a loop device backed by an image file. |
 | ReactOS 0.4.15 (NT family) | Installed unattended from its official ISO into a raw disk image (a scratch `unattend.inf`, not a Rehome feature). The installed disk was then imported with `tests/boot`, linked and copy. Rehome identified it as NT 5.2 build 3790, BIOS, IDE. Both VMs booted to the desktop (OCR found "Recycle Bin"), and the source's SHA-256 was unchanged. |
 | Ubuntu 24.04 cloud image | Imported with `tests/boot`: identified as Ubuntu 24.04.5 (UEFI), Linux fixes applied, boots to `login:` on the serial console. Source SHA-256 unchanged. |
-| Ubuntu autoinstall | The generated autoinstall configuration was accepted, and the installer partitioned the disk and began copying files before the container was restarted. A full install under emulation was not completed. |
+| Quick Create + automatic install (Ubuntu Server) | `rehome quick-create ubuntu-server-lts --unattended --user alice --start` downloaded the 26.04.1 ISO and verified it against Ubuntu's `SHA256SUMS`. The installer ran without questions, including the security updates, and powered the VM off. The next start booted the installed system to `login:`. This took about 2 h 10 min under emulation. |
+| Quick Create downloads | ReactOS (SourceForge SHA-256) and Ubuntu downloaded and verified; a repeated request reuses the file. The other catalog sources were blocked by the network policy and are tested against recorded sample responses. |
 | GUI | Every window, wizard and dialog rendered on Xvfb in light and dark mode (`tests/gui/tour.sh`). The console showed a live FreeDOS guest and passed keyboard input. |
 | Install script and packages | See [PACKAGING.md](PACKAGING.md) → Testing |
 
@@ -136,3 +137,6 @@ part of the work and no KVM later, so both paths were exercised.
 - Windows unattended installation: the answer files are generated and
   unit-tested, but no Windows ISO could be downloaded in the build
   environment.
+- Automatic installation of Fedora, Debian, openSUSE and Ubuntu Desktop:
+  the answer media are generated and checked, but the installers were not
+  run, because their download sites were blocked.

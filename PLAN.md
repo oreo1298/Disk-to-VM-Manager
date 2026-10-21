@@ -71,3 +71,25 @@ Each milestone ends with a working, tested, committed step.
 ## M7 — Docs and verification
 - README: install per distro, first run, troubleshooting, FAQ.
 - Final test runs; list of OS families tested and those needing user media.
+
+## Status at 0.1.0
+
+| Milestone | State |
+|---|---|
+| M0–M1 | Done |
+| M2 | Done. Quick Create and unattended install verified end-to-end for Ubuntu Server; other systems have their answer media checked by tests. |
+| M3 | Done. Verified on Xvfb with `tests/gui/tour.sh`. |
+| M4–M5 | Done. Verified on synthetic Windows/9x/DOS disks, a real Ubuntu cloud image and a real ReactOS install. Real Windows images still need to be run through `tests/boot`. |
+| M6 | Done. Container tests pass; Fedora, openSUSE and Arch package names still need a check against live mirrors. |
+| M7 | Done. See README, docs/TESTING.md, docs/PACKAGING.md. |
+
+Next steps, roughly in order:
+
+1. Run `tests/boot` with real Windows, 9x and BSD images on a KVM host, and
+   fix whatever they reveal.
+2. Verify the dependency names against live Fedora, openSUSE and Arch
+   mirrors.
+3. Tag v0.1.0, publish the release checksum, and fill the PKGBUILD's
+   `sha256sums` (see docs/PACKAGING.md → Release checklist).
+4. Later: GPU pass-through in the app (beyond hooks), and an unattended
+   ReactOS install.

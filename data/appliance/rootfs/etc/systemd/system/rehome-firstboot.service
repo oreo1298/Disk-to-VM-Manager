@@ -1,0 +1,15 @@
+# Once, on the first boot on a computer: grow the data partition to fill the
+# drive and record a hardware report.
+[Unit]
+Description=Rehome appliance: first boot
+After=local-fs.target
+Before=rehome-boot.service rehome-kiosk.service rehome-maintenance.service
+ConditionPathExists=!/var/lib/rehome/appliance/firstboot.done
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/bin/rehome appliance firstboot
+
+[Install]
+WantedBy=multi-user.target

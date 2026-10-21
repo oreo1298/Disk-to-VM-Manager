@@ -1,0 +1,19 @@
+# The maintenance console on tty1 (a text menu; see docs/APPLIANCE.md).
+[Unit]
+Description=Rehome appliance: maintenance console
+After=systemd-user-sessions.service rehome-firstboot.service
+Conflicts=getty@tty1.service rehome-kiosk.service
+
+[Service]
+Type=idle
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+StandardInput=tty-force
+StandardOutput=tty
+StandardError=tty
+Environment=TERM=linux
+ExecStartPre=-/usr/bin/chvt 1
+ExecStart=/usr/local/bin/rehome appliance console
+Restart=always
+RestartSec=1

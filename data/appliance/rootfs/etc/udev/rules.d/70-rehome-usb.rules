@@ -1,0 +1,2 @@
+# Rehome appliance: the VM (run as user "rehome") may take over USB devices.
+SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", GROUP="rehome", MODE="0660"

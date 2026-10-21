@@ -37,6 +37,7 @@ part_get_mbr_id part_get_parttype part_init part_list part_set_bootable
 part_set_gpt_type part_set_mbr_id part_to_dev part_to_partnum pread pread_device
 pwrite_device read_file rm set_backend set_memsize set_network set_smp set_trace
 shutdown syslinux umount umount_all upload version vfs_label vfs_type vfs_uuid write
+fstrim part_set_name rm_rf sh statvfs sync tar_in copy_device_to_device e2fsck set_uuid_random
 """.split()
 
 # Return types the header cannot tell apart (all "int" / "char **" in C).
@@ -49,7 +50,8 @@ add_drive_opts chmod cp cp_a cryptsetup_open disk_create download hivex_close hi
 hivex_node_delete_child hivex_node_set_value hivex_open launch ln_sf mkdir mkdir_p mkfs
 mount mount_options mount_ro mv part_add part_init part_set_bootable part_set_gpt_type
 part_set_mbr_id rm set_backend set_memsize set_network set_smp set_trace shutdown syslinux umount
-umount_all upload write
+umount_all upload write fstrim part_set_name rm_rf sync tar_in copy_device_to_device e2fsck
+set_uuid_random
 """.split())
 HASH = {"inspect_get_mountpoints", "list_filesystems"}
 

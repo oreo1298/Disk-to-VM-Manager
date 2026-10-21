@@ -18,6 +18,7 @@ class Drive:
     format: str = "raw"
     readonly: bool = True
     label: str = ""             # informational only (libguestfs labels are restricted)
+    discard: bool = False       # pass TRIM through (fstrim frees space in the image file)
 
 
 def backend() -> str:
@@ -73,6 +74,8 @@ def launch(drives: list[Drive], network: bool = False, memsize: int = 0):
             sock = d.path.split("socket=", 1)[1]
             g.add_drive_opts("", protocol="nbd", server=[f"unix:{sock}"], format=d.format,
                              readonly=d.readonly)
+        elif d.discard:
+            g.add_drive_opts(d.path, format=d.format, readonly=d.readonly, discard="besteffort")
         else:
             g.add_drive_opts(d.path, format=d.format, readonly=d.readonly)
     try:

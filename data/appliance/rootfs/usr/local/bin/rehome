@@ -1,0 +1,13 @@
+#!/bin/sh
+# Rehome inside an appliance (docs/APPLIANCE.md). The VM library lives on the
+# data partition and belongs to the "rehome" user; commands that touch it run
+# as that user even when started from the root shell.
+export PYTHONPATH=/opt/rehome
+export REHOME_DATA_DIR=/opt/rehome/data
+export REHOME_HOME=/var/lib/rehome
+export REHOME_RUNTIME_DIR=/run/rehome
+export REHOME_APPLIANCE=1
+if [ "$(id -u)" = 0 ] && [ "$1" != appliance ]; then
+    exec runuser -u rehome -- "$0" "$@"
+fi
+exec python3 -m rehome "$@"

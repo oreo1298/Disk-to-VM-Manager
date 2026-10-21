@@ -28,6 +28,7 @@ Everything the GUI does is also available on the command line (`rehome --help`).
 - [Importing an installed system](#importing-an-installed-system)
 - [Creating a VM](#creating-a-vm)
 - [Managing VMs](#managing-vms)
+- [Appliances: a VM on its own computer](#appliances-a-vm-on-its-own-computer)
 - [Command line](#command-line)
 - [Troubleshooting](#troubleshooting)
 - [FAQ](#faq)
@@ -282,6 +283,28 @@ QEMU runs detached, so VMs keep running when you close the window.
 Keyboard shortcuts: Ctrl+N new VM, Ctrl+I import, Ctrl+, preferences, Ctrl+?
 all shortcuts.
 
+## Appliances: a VM on its own computer
+
+**Build Appliance…** (in a VM's ⋮ menu, or `rehome appliance build VM
+out.img`) turns a VM into a drive image. Write it to an SSD or USB drive,
+boot a computer from it, and the VM starts full screen with that computer's
+screen, keyboard, mouse, sound and USB ports, as if it were installed
+there. Shutting the VM down turns the computer off. It is meant for old
+systems (Windows XP, 98, 7…) that have to keep running after their
+hardware is gone.
+
+- Works on BIOS and UEFI computers, desktops and laptops; the VM gets the
+  memory and processors the computer can spare.
+- A hidden boot menu (Esc) offers basic graphics and a **maintenance
+  console**: checkpoints, USB devices, Wi-Fi, a hardware report, saving
+  diagnostics to a USB stick, and a root shell.
+- Built without root. The first build downloads a base system (Ubuntu
+  26.04 LTS with QEMU, about 1.2 GB) and caches it.
+- Turn Secure Boot off and virtualization on in the target computer's
+  firmware settings.
+
+See [docs/APPLIANCE.md](docs/APPLIANCE.md).
+
 ## Command line
 
 ```
@@ -300,6 +323,7 @@ rehome set VM --memory 8G --cpus 4 … | cd VM file.iso
 rehome usb list|attach|detach …
 rehome clone | export | import-vm | delete VM
 rehome logs VM | diagnostics VM
+rehome appliance build VM out.img | appliance base [--refresh]
 ```
 
 VMs can be named by name, ID or ID prefix. Most commands have `--json` for

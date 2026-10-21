@@ -17,7 +17,7 @@ from rehome.errors import RehomeError
 
 COMMAND_MODULES = [
     "doctor", "vm", "create", "snapshot", "sources", "inspect", "import_",
-    "patch", "usb", "media", "misc", "update",
+    "patch", "usb", "media", "misc", "update", "appliance",
 ]
 
 

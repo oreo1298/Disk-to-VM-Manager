@@ -27,7 +27,7 @@ def test_every_libguestfs_call_has_a_c_signature():
 def test_int_results_are_classified():
     kinds = {v[1] for v in FUNCS.values()}
     assert kinds <= {"err", "bool", "int", "int64", "str", "conststr", "strlist", "hash", "buf",
-                     "struct:version", "structlist:partition", "structlist:hivex_node",
+                     "struct:version", "struct:statvfs", "structlist:partition", "structlist:hivex_node",
                      "structlist:hivex_value"}
     assert FUNCS["inspect_get_major_version"][1] == "int"
     assert FUNCS["exists"][1] == "bool" and FUNCS["mount_ro"][1] == "err"

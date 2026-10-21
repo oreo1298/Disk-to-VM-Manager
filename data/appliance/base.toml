@@ -1,0 +1,35 @@
+# The Linux system inside a Rehome appliance (docs/APPLIANCE.md).
+#
+# The appliance starts from Ubuntu's minimal "ubuntu-base" root filesystem.
+# Its checksum is pinned here (checked against Ubuntu's signed SHA256SUMS
+# when this release was added); everything installed on top comes from the
+# Ubuntu archive and is verified by apt against the archive's signed
+# InRelease files, with the keyring from that pinned base.
+
+[release]
+name = "Ubuntu 26.04.1 LTS"
+codename = "resolute"
+url = "https://cdimage.ubuntu.com/ubuntu-base/releases/26.04.1/release/ubuntu-base-26.04.1-base-amd64.tar.gz"
+sha256 = "a496a960472ce474a59590b8987d3a1135d3cbef1991f3b1abe8cacfea8bf85a"
+
+[archive]
+url = "https://archive.ubuntu.com/ubuntu"
+suites = ["resolute", "resolute-updates", "resolute-security"]
+components = ["main", "restricted", "universe"]
+arch = "amd64"
+
+# Installed without "recommended" extras. Grouped by purpose.
+[packages]
+system = ["linux-image-generic", "dracut", "systemd-sysv", "libpam-systemd", "udev", "kmod",
+          "dbus", "e2fsprogs", "cloud-guest-utils", "kbd"]
+boot = ["grub-pc-bin", "grub-efi-amd64-bin", "grub2-common"]
+vm = ["qemu-system-x86", "qemu-system-gui", "qemu-utils", "ovmf", "seabios", "passt",
+      "python3"]
+display = ["cage", "fonts-dejavu-core"]
+sound = ["alsa-utils"]
+network = ["systemd-resolved", "iwd", "wireless-regdb", "iproute2", "iputils-ping"]
+maintenance = ["usbutils", "pciutils", "less", "nano"]
+
+[size]
+root_gib = 6        # the system partition; the VM lives on its own data partition
+esp_mib = 256

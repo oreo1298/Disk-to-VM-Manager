@@ -499,3 +499,78 @@ the partition never received Microsoft's boot code.
   stay unchanged. The `msdos7` path to a real Windows 98 `IO.SYS` still
   needs a real Windows 98 disk to test.
 
+
+## D25. Appliance base system: Ubuntu 26.04 LTS, built without root
+
+An appliance needs a Linux that supports the newest laptops and desktops it
+may be moved to, for years, and that Rehome can build on any distribution
+without root.
+
+- **Ubuntu 26.04 LTS** (`ubuntu-base`, 35 MB): a recent kernel and Mesa for
+  new hardware, linux-firmware, QEMU 10, `cage` and `iwd` packaged, and
+  security updates until 2031. Alpine was the other candidate (smaller), but
+  its kernels lag for new GPUs and Wi-Fi, and its mirrors were not reachable
+  from the build environment used for development.
+- **No root, no network inside libguestfs.** libguestfs's helper VM gets its
+  network from passt or a DHCP client, and both vary between distributions
+  (on Ubuntu the appliance had no DHCP client; in containers passt cannot
+  run). So Rehome downloads on the host and apt runs offline in the image:
+  apt is shown the archive's indexes through a `file:` mirror, prints the
+  packages it would fetch (`--print-uris`), Rehome downloads exactly those,
+  copies them in, and apt installs them. apt's own dependency resolution is
+  used; nothing is re-implemented.
+- **Trust chain:** the ubuntu-base SHA256 is pinned in
+  `data/appliance/base.toml` (checked against Ubuntu's signed SHA256SUMS
+  when added); apt in the image checks each `InRelease` signature with the
+  keyring from that base; the host checks indexes and packages against the
+  signed hashes as it downloads them; apt checks the packages again.
+- **Cached base.** The installed system (no Rehome configuration) is cached
+  as a qcow2 file in `~/.cache/rehome/appliance` and reused for 30 days (or
+  until `--refresh`), so later appliances build in minutes.
+- `update-grub` is diverted: the appliance's boot menu is written by Rehome,
+  not generated.
+
+## D26. Appliance disk layout and boot
+
+- GPT with a BIOS boot partition, a 256 MiB EFI system partition, a 6 GiB
+  ext4 system partition and an ext4 data partition holding the VM. The same
+  image boots on BIOS and UEFI computers (GRUB installed for both, the UEFI
+  one as the removable-media path `EFI/BOOT/BOOTX64.EFI`, so no firmware
+  boot entry is needed). Secure Boot is not supported: the person setting
+  the computer up turns it off.
+- Each build gets new filesystem UUIDs, so two appliance drives in one
+  computer do not confuse each other's boot menus.
+- The data partition is sized to the VM at build time and grown to fill the
+  drive on first boot, so the image file stays small.
+- GRUB's menu is hidden (Esc shows it) and has: start the VM, start it with
+  basic graphics (`nomodeset`, software rendering), maintenance console.
+  After a boot that did not reach the VM, the menu is shown automatically
+  (`recordfail` in grubenv, cleared once the VM runs).
+
+## D27. Running the VM full screen
+
+- `cage` (a Wayland kiosk compositor) shows exactly one application; QEMU's
+  GTK display runs in it full screen, scaled to the screen, without menus.
+  If cage cannot use the GPU, it is restarted with software rendering.
+- The VM runs as an unprivileged `rehome` user with a logind seat (the
+  kiosk service uses `PAMName=login` on tty1), in the `kvm`, `audio`,
+  `video`, `render` and `input` groups. A udev rule gives that user the USB
+  devices, so pass-through needs no helper. VT switching is disabled.
+- The VM is the normal Rehome VM (same `vm.toml`, same QEMU command line
+  builder) with `REHOME_HOME=/var/lib/rehome`; only the console kind differs
+  (`kiosk`). The disks are flattened into standalone qcow2 files at build
+  time, so checkpoints keep working inside the appliance.
+- Guest shuts down → QEMU exits → the computer powers off. The power button
+  sends an ACPI shutdown to the guest instead of cutting it off.
+- Audio goes straight to ALSA (no sound server needed).
+
+## D28. Maintenance console
+
+- A GRUB entry (`rehome.mode=maintenance`) boots to a text menu on tty1
+  instead of the VM: start the VM, checkpoints, network and Wi-Fi, hardware
+  report, save diagnostics to a USB stick, a root shell, reboot, power off.
+- The kiosk also falls back to it when the VM cannot start, with the error
+  on screen.
+- It runs as root without a password by default: whoever reaches the boot
+  menu has the machine in hand anyway. `--maintenance-password` sets a root
+  password that the console asks for.

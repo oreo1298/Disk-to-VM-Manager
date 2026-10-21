@@ -319,6 +319,14 @@ class Builder:
         elif console == "vnc":
             self.a("-display", "none")
             self.a("-vnc", f"unix:{self.rt.vnc}")
+        elif console == "kiosk":
+            # Appliances (rehome/appliance): QEMU's own window, full screen and
+            # scaled, in the cage kiosk compositor; no menus, cannot be closed.
+            if "gtk" in self.caps.displays or not self.caps.displays:
+                self.a("-display", "gtk,full-screen=on,zoom-to-fit=on,show-menubar=off,"
+                                   "show-tabs=off,window-close=off")
+            else:
+                self.a("-display", "sdl,window-close=off", "-full-screen")
         else:
             self.a("-display", "egl-headless" if gl else "none")
 

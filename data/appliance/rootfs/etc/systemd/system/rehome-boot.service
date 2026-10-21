@@ -1,0 +1,11 @@
+# Starts the VM, or the maintenance console when booted with rehome.mode=maintenance.
+[Unit]
+Description=Rehome appliance: start the VM or the maintenance console
+After=rehome-firstboot.service systemd-user-sessions.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/rehome appliance boot
+
+[Install]
+WantedBy=multi-user.target

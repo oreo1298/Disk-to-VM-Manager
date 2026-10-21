@@ -93,3 +93,37 @@ Next steps, roughly in order:
    `sha256sums` (see docs/PACKAGING.md → Release checklist).
 4. Later: GPU pass-through in the app (beyond hooks), and an unattended
    ReactOS install.
+
+## M8 — Appliances (a VM that boots on its own computer)
+
+An appliance is a disk image with a minimal Linux that starts one Rehome VM
+full screen at power-on, so an old system runs on new hardware as if it
+were installed there. Nobody logs into the Linux part; a boot-menu entry
+opens a maintenance console instead of the VM. Design: docs/DECISIONS.md
+D25–D28; user guide: docs/APPLIANCE.md.
+
+Phase 1 (this milestone), with emulated hardware only, which is what
+Windows XP and older need:
+
+- A1 Plan and decisions.
+- A2 Base system built rootlessly and cached: Ubuntu 26.04 LTS
+  `ubuntu-base` + packages, installed by apt offline inside the image from
+  packages Rehome downloads on the host.
+- A3 Embed a VM (disks flattened, install media optional) and run it full
+  screen: `cage` + QEMU's GTK display, as an unprivileged `rehome` user;
+  turning the guest off turns the computer off.
+- A4 GRUB menu (hidden; Esc shows it; shown automatically after a failed
+  boot): start the VM, start with basic graphics, maintenance console. First
+  boot grows the data partition and records a hardware report; each start
+  adapts memory/CPUs to the computer and warns when virtualization is off.
+- A5 USB devices plugged in are given to the VM (not keyboards, mice or the
+  appliance's own drive); the power button shuts the guest down cleanly;
+  networking (wired DHCP, Wi-Fi via iwd) for the VM's NAT.
+- A6 `rehome appliance build` (CLI and GUI), docs, and an integration test
+  that builds an appliance and boots it in QEMU.
+
+Later phases: GPU pass-through on computers with two GPUs (dedicated GPU to
+the VM, integrated one for the appliance), with automatic fallback to
+emulated graphics and driver staging; 3D acceleration for 9x/XP without
+pass-through; updates and rollback of the appliance system; writing the
+image to a disk from Rehome.

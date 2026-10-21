@@ -159,7 +159,7 @@ class Display:
     device: str = "virtio-vga"
     vram_mib: int = 0            # 0 = device default
     gl: bool = False             # virgl 3D acceleration
-    console: str = "dbus"        # dbus / spice / vnc / none
+    console: str = "dbus"        # dbus / spice / vnc / none / kiosk (appliances)
 
 
 @dataclass

@@ -40,6 +40,7 @@ class VmPage(Gtk.Box):
         more.append("Rename…", "vm.rename")
         more.append("Clone…", "vm.clone")
         more.append("Export…", "vm.export")
+        more.append("Build Appliance…", "vm.appliance")
         more.append("Delete…", "vm.delete")
         mb = Gtk.MenuButton(icon_name="view-more-symbolic", menu_model=more, tooltip_text="More actions")
         mb.update_property([Gtk.AccessibleProperty.LABEL], ["More actions"])
@@ -174,6 +175,7 @@ class VmPage(Gtk.Box):
         act("rename", self._rename)
         act("clone", self._clone)
         act("export", self._export)
+        act("appliance", self._appliance)
         act("delete", self._delete)
         self.insert_action_group("vm", group)
 
@@ -253,6 +255,10 @@ class VmPage(Gtk.Box):
             run_async(lambda: lifecycle.export(self.cfg, f.get_path()),
                       lambda p: self.window.toast(f"Exported to {p}"), lambda e: show_error(self, e))
         dlg.save(self.get_root(), None, chosen)
+
+    def _appliance(self):
+        from rehome.ui.appliance_dialog import ApplianceDialog
+        ApplianceDialog(self.get_root(), self.cfg).present()
 
     def _delete(self):
         keep = Gtk.CheckButton(label="Keep the disk files (move them aside)")

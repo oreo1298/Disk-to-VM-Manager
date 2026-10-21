@@ -2,7 +2,6 @@
 
 import hashlib
 import os
-import shutil
 import subprocess
 
 import pytest
@@ -62,12 +61,12 @@ def test_writes_are_refused(served, image):
     assert _sha(image) == before
 
 
-@pytest.mark.skipif(not shutil.which("guestfish") and not os.path.exists("/usr/bin/guestfish"),
-                    reason="libguestfs not installed")
 def test_libguestfs_reads_it(served):
-    guestfs = pytest.importorskip("guestfs")
+    from rehome.inspect import gfs
+    if not gfs.backend():
+        pytest.skip("libguestfs is not installed")
     sock = served.split("socket=", 1)[1]
-    g = guestfs.GuestFS(python_return_dict=True)
+    g = gfs.new_handle()
     g.set_backend("direct")
     g.add_drive_opts("", format="raw", readonly=True, protocol="nbd",
                      server=[f"unix:{sock}"])

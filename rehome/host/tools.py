@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import glob
 import os
 import re
-import sys
 from dataclasses import dataclass
 
 from rehome.util.proc import output, which
@@ -52,6 +50,31 @@ def _python_module(key, label, purpose, required, module) -> Tool:
     return t
 
 
+def _libguestfs() -> Tool:
+    """libguestfs, through its Python bindings or (without them) its C library."""
+    t = _python_module("libguestfs", "libguestfs",
+                       "Identifies the installed OS and applies offline fixes.", True, "guestfs")
+    bindings_error = t.note
+    try:
+        from rehome.inspect import gfs
+        kind = gfs.backend()
+        if kind:
+            g = gfs.new_handle()
+            try:
+                v = g.version()
+                t.version = f"{v['major']}.{v['minor']}.{v['release']}"
+            finally:
+                g.close()
+            t.found = True
+            t.path = "Python bindings" if kind == "bindings" else "C library"
+            t.note = ""
+        else:
+            t.note = bindings_error
+    except Exception as e:  # noqa: BLE001 - reported by the doctor
+        t.found, t.note = False, bindings_error or str(e)
+    return t
+
+
 def _gi(key, label, purpose, required, namespace, version) -> Tool:
     t = Tool(key, label, purpose, required)
     try:
@@ -85,8 +108,7 @@ def inventory() -> list[Tool]:
                   False, ["swtpm"]),
         _bin_tool("swtpm_setup", "swtpm_setup", "Initialises software TPM state.",
                   False, ["swtpm_setup"]),
-        _python_module("libguestfs", "libguestfs (Python bindings)",
-                       "Identifies the installed OS and applies offline fixes.", True, "guestfs"),
+        _libguestfs(),
         _bin_tool("virt-v2v", "virt-v2v", "Converts Windows 7+ and major Linux guests to virtio.",
                   False, ["virt-v2v"], ("--version",)),
         _bin_tool("virt-v2v-in-place", "virt-v2v-in-place", "In-place conversion of overlays.",
@@ -140,42 +162,14 @@ def polkit_policy_installed() -> bool:
     return os.path.isfile("/usr/share/polkit-1/actions/io.github.oreo1298.Rehome.policy")
 
 
-GUESTFS_BINDING_GLOBS = (
-    "/usr/lib*/python3*/site-packages/guestfs.py",
-    "/usr/lib*/python3*/dist-packages/guestfs.py",
-    "/usr/lib/python3/dist-packages/guestfs.py",
-    "/usr/local/lib*/python3*/site-packages/guestfs.py",
-)
-
-
 def guestfs_diagnosis(import_error: str) -> tuple[str, str]:
-    """Why ``import guestfs`` fails, in plain English: (detail, fix)."""
-    me = f"Python {sys.version_info.major}.{sys.version_info.minor} ({sys.executable})"
+    """Why libguestfs cannot be used, in plain English: (detail, fix).
+
+    Only called when neither the Python bindings nor the C library work;
+    Rehome needs just one of them.
+    """
     if import_error and "No module named 'guestfs'" not in import_error:
-        return (f"libguestfs' Python bindings are installed but cannot be loaded by {me}: "
-                f"{import_error}",
-                "Reinstall libguestfs. If the error stays, the distribution's package is broken "
-                "for this Python version; please report it to your distribution.")
-    here = {os.path.realpath(p) for p in sys.path if p}
-    elsewhere = sorted({p for pat in GUESTFS_BINDING_GLOBS for p in glob.glob(pat)
-                        if os.path.realpath(os.path.dirname(p)) not in here})
-    mine = f"python{sys.version_info.major}.{sys.version_info.minor}"
-    other = sorted({m for p in elsewhere for m in re.findall(r"python3\.\d+", p) if m != mine})
-    if other:
-        return (f"libguestfs' Python bindings are installed only for {', '.join(other)} "
-                f"({', '.join(elsewhere)}), but Rehome runs on {me}.",
-                "The distribution's libguestfs package was built for a different Python version "
-                "than the one installed. Update the system once libguestfs has been rebuilt, or "
-                "report it to your distribution.")
-    if elsewhere:
-        return (f"libguestfs' Python bindings are installed in {', '.join(elsewhere)}, which "
-                f"{me} does not search (a virtual environment?).",
-                "Run Rehome with the system Python (/usr/bin/python3), as the installer sets up.")
-    if which("guestfish") or glob.glob("/usr/lib*/libguestfs.so*") or \
-            glob.glob("/usr/lib/*/libguestfs.so*"):
-        return (f"libguestfs is installed, but without Python bindings for {me}.",
-                "Install libguestfs' Python bindings (Debian/Ubuntu: python3-guestfs; "
-                "Fedora/openSUSE: python3-libguestfs; Arch includes them in the libguestfs "
-                "package). Check with: python3 -c 'import guestfs'")
+        return (f"libguestfs is installed but cannot be loaded: {import_error}",
+                "Reinstall libguestfs. If the error stays, report it to your distribution.")
     return ("libguestfs is not installed.", "Install libguestfs.")
 

@@ -13,10 +13,10 @@ import pytest
 
 pytestmark = pytest.mark.slow
 
-try:
-    import guestfs  # noqa: F401
-except ImportError:
-    pytest.skip("libguestfs Python bindings are not installed", allow_module_level=True)
+from rehome.inspect import gfs  # noqa: E402
+
+if not gfs.backend():
+    pytest.skip("libguestfs is not installed", allow_module_level=True)
 
 from tests.fixtures import freedos
 from tests.fixtures import windows as W

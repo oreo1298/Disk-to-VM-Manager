@@ -100,7 +100,7 @@ def _software_hive(spec: WinSpec) -> dict:
 
 
 def build(out: str, spec: WinSpec, fmt: str = "raw") -> str:
-    import guestfs
+    from rehome.inspect.gfs import new_handle
     os.environ.setdefault("LIBGUESTFS_BACKEND", "direct")
     xp = spec.version.startswith("5.")
     sysroot = "/WINDOWS" if xp else "/Windows"
@@ -112,7 +112,7 @@ def build(out: str, spec: WinSpec, fmt: str = "raw") -> str:
         cmd = os.path.join(td, "cmd.exe")
         with open(cmd, "wb") as f:
             f.write(regf.minimal_pe(spec.arch))
-        g = guestfs.GuestFS(python_return_dict=True)
+        g = new_handle()
         g.disk_create(out, fmt, spec.size_mib * 2**20)
         g.add_drive_opts(out, format=fmt, readonly=False)
         g.launch()
@@ -180,9 +180,9 @@ def build(out: str, spec: WinSpec, fmt: str = "raw") -> str:
 
 def build_win9x(out: str, kernel32=(4, 10, 2222, 0), windir: str = "WINDOWS") -> str:
     """FAT32 disk with Windows 98 SE (or 95/Me, per kernel32 version)."""
-    import guestfs
+    from rehome.inspect.gfs import new_handle
     os.environ.setdefault("LIBGUESTFS_BACKEND", "direct")
-    g = guestfs.GuestFS(python_return_dict=True)
+    g = new_handle()
     g.disk_create(out, "raw", 300 * 2**20)
     g.add_drive_opts(out, format="raw", readonly=False)
     g.launch()
@@ -213,9 +213,9 @@ def build_win9x(out: str, kernel32=(4, 10, 2222, 0), windir: str = "WINDOWS") ->
 
 
 def build_msdos(out: str, version: str = "6.22") -> str:
-    import guestfs
+    from rehome.inspect.gfs import new_handle
     os.environ.setdefault("LIBGUESTFS_BACKEND", "direct")
-    g = guestfs.GuestFS(python_return_dict=True)
+    g = new_handle()
     g.disk_create(out, "raw", 64 * 2**20)
     g.add_drive_opts(out, format="raw", readonly=False)
     g.launch()

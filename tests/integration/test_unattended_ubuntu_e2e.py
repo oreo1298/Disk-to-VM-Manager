@@ -38,8 +38,8 @@ def test_ubuntu_server_installs_unattended():
         assert runner.wait_stopped(cfg, timeout), "the installer did not power the VM off"
         runner.after_stop(cfg)
 
-        import guestfs
-        g = guestfs.GuestFS(python_return_dict=True)
+        from rehome.inspect.gfs import new_handle
+        g = new_handle()
         g.add_drive_opts(str(cfg.dir / "disks/disk0.qcow2"), format="qcow2", readonly=1)
         g.launch()
         roots = g.inspect_os()

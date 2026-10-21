@@ -451,4 +451,24 @@ official repositories.
     lockdown active.
   - `virt-firmware` is a required package only for the Arch family, since
     the others ship a pre-enrolled store.
+- **libguestfs without Python bindings.** Arch's current libguestfs package
+  ships the C library and guestfish, but no Python module (`pacman -Ql
+  libguestfs` lists no `guestfs.py`).
+  - Rehome now calls the C library directly through ctypes
+    (`rehome/inspect/guestfs_ctypes.py`) whenever `import guestfs` fails.
+    It is a drop-in for the bindings' `GuestFS` class: same names, return
+    types and errors.
+  - The C signatures and option structs come from `guestfs.h`.
+    `scripts/gen_guestfs_sigs.py` generates `guestfs_sigs.py`, so nothing is
+    compiled on the user's machine.
+  - libguestfs keeps its ABI stable (optional arguments are only appended,
+    with fixed bitmask bits), so the table made from 1.52 works with newer
+    releases.
+  - The header cannot tell an int result from a success code or a boolean,
+    so the generator refuses any int-returning call that is not classified
+    by hand. A unit test fails if the code calls a libguestfs function
+    missing from the table.
+  - The bindings stay preferred where installed. `REHOME_GUESTFS=ctypes`
+    forces the C-library path, and the whole integration suite passes with
+    it.
 

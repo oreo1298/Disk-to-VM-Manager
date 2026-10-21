@@ -20,23 +20,41 @@ class Drive:
     label: str = ""             # informational only (libguestfs labels are restricted)
 
 
-def _import_guestfs():
-    try:
+def backend() -> str:
+    """How Rehome talks to libguestfs: "bindings", "ctypes" (C library) or "" (unavailable).
+
+    The Python bindings are preferred; without them (Arch ships none) Rehome
+    calls libguestfs' C library directly. REHOME_GUESTFS=ctypes forces that.
+    """
+    if os.environ.get("REHOME_GUESTFS") != "ctypes":
+        try:
+            import guestfs  # type: ignore  # noqa: F401
+            return "bindings"
+        except ImportError:
+            pass
+    from rehome.inspect import guestfs_ctypes
+    return "ctypes" if guestfs_ctypes.available() else ""
+
+
+def new_handle():
+    """A libguestfs handle (``guestfs.GuestFS(python_return_dict=True)`` or equivalent)."""
+    kind = backend()
+    if kind == "bindings":
         import guestfs  # type: ignore
-        return guestfs
-    except ImportError as e:
-        raise RehomeError("libguestfs (Python bindings) is not installed, so the installed system "
-                          "cannot be identified or patched.",
-                          fix="Install libguestfs and its Python bindings (run `rehome doctor`).",
-                          code="no-libguestfs") from e
+        return guestfs.GuestFS(python_return_dict=True)
+    if kind == "ctypes":
+        from rehome.inspect import guestfs_ctypes
+        return guestfs_ctypes.GuestFS()
+    raise RehomeError("libguestfs is not installed, so the installed system cannot be identified "
+                      "or patched.", fix="Install libguestfs (run `rehome doctor`).",
+                      code="no-libguestfs")
 
 
 def launch(drives: list[Drive], network: bool = False, memsize: int = 0):
-    guestfs = _import_guestfs()
     # Unprivileged users cannot use the libvirt backend's system connection;
     # the direct backend runs the appliance as a child QEMU process.
     os.environ.setdefault("LIBGUESTFS_BACKEND", "direct")
-    g = guestfs.GuestFS(python_return_dict=True)
+    g = new_handle()
     if os.environ.get("REHOME_GUESTFS_TRACE"):
         g.set_trace(1)
     if memsize:

@@ -333,17 +333,17 @@ def check_tools(r: Report, h: HostInfo) -> None:
               "swtpm_setup is missing, so new TPMs cannot be initialised.",
               fix="Install the swtpm tools.", commands=_install(["swtpm"], fam))
     if inv["libguestfs"].found:
-        r.add("tool.libguestfs", "Import", "libguestfs", OK, "libguestfs Python bindings are installed.")
+        lg = inv["libguestfs"]
+        r.add("tool.libguestfs", "Import", "libguestfs", OK,
+              f"libguestfs {lg.version}, through its Python bindings." if lg.path == "Python bindings"
+              else f"libguestfs {lg.version}, used through its C library (its Python bindings are "
+                   "not installed; Rehome does not need them).")
         check_appliance_kernel(r, fam)
     else:
         detail, fix = tools_mod.guestfs_diagnosis(inv["libguestfs"].note)
-        # Installing packages only helps when something is missing (on Arch the
-        # bindings come with libguestfs itself, so reinstalling changes nothing).
-        missing = detail.startswith("libguestfs is not installed") or \
-            ("without Python bindings" in detail and fam != "arch")
         r.add("tool.libguestfs", "Import", "libguestfs", ERROR,
-              "Imported systems cannot be identified or patched: " + detail,
-              fix=fix, commands=_install(["libguestfs"], fam) if missing else [])
+              "Imported systems cannot be identified or patched: " + detail, fix=fix,
+              commands=_install(["libguestfs"], fam) if "not installed" in detail else [])
     tool("virt-v2v", "Import", "virt-v2v", INFO,
          "virt-v2v is not installed. Rehome's own patcher will be used; virt-v2v adds "
          "automatic virtio driver installation for Windows 7+ and some Linux distributions.",

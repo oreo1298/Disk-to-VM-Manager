@@ -1,6 +1,13 @@
 from tests.boot.watch import classify
 
 
+def test_windows_ignores_serial_debug_output():
+    serial = "(base/system/winlogon) logon started\nBoot failure in some driver"
+    assert classify({"serial console": serial}, "windows").state == "waiting"
+    assert classify({"serial console": serial, "screen (OCR)": "Recycle Bin"},
+                    "windows").state == "success"
+
+
 def test_failure_wins_over_success():
     v = classify({"screen (OCR)": "Recycle Bin\nSTOP: 0x0000007B (0xF78D2524, ...)"}, "windows")
     assert v.state == "failure" and "STOP" in v.reason
@@ -22,4 +29,4 @@ def test_custom_success_text():
 def test_boot_failures():
     for text in ("Kernel panic - not syncing: VFS", "grub rescue> ", "NTLDR is missing",
                  "Your PC ran into a problem and needs to restart", "Windows protection error."):
-        assert classify({"x": text}, "other").state == "failure", text
+        assert classify({"screen (OCR)": text}, "other").state == "failure", text

@@ -355,7 +355,9 @@ Tested so far (details and how to re-run: [docs/TESTING.md](docs/TESTING.md)):
     98 and MS-DOS disks,
   - linked and copy imports of a real FreeDOS disk, which boot to the
     prompt with the source's SHA-256 unchanged,
-  - an Ubuntu 24.04 cloud image, which boots to the login prompt.
+  - an Ubuntu 24.04 cloud image, which boots to the login prompt,
+  - a real ReactOS 0.4.15 installation (NT family), which boots to the
+    desktop.
 - **New VMs:**
   - ReactOS (NT family) from its official ISO boots to Setup,
   - Ubuntu's automatic installation accepts Rehome's answers and starts

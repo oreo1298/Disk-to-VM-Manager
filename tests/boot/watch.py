@@ -70,7 +70,15 @@ def _match(patterns, text):
     return None
 
 
+# Windows-family guests may write debug output to the serial port (ReactOS
+# does, including words like "logon"); only what is on screen counts for them.
+SCREEN_ONLY = {"windows", "win9x", "dos"}
+SCREEN_SOURCES = ("text screen", "screen (OCR)")
+
+
 def classify(texts: dict[str, str], family: str, success: list[str] | None = None) -> Verdict:
+    if family in SCREEN_ONLY:
+        texts = {k: v for k, v in texts.items() if k in SCREEN_SOURCES}
     for source, text in texts.items():
         hit = _match(FAILURE, text)
         if hit:
@@ -89,7 +97,8 @@ def watch(cfg, family: str, timeout: float, artifacts: Path, success: list[str] 
     artifacts.mkdir(parents=True, exist_ok=True)
     shots: list[Path] = []
     serial = cfg.dir / "logs" / "serial.log"
-    deadline = time.monotonic() + timeout
+    started = time.monotonic()
+    deadline = started + timeout
     n = 0
     while True:
         st = runner.state(cfg)
@@ -121,4 +130,11 @@ def watch(cfg, family: str, timeout: float, artifacts: Path, success: list[str] 
         if time.monotonic() > deadline:
             return Verdict("failure", f"no login or desktop after {int(timeout)} s",
                            texts.get("screen (OCR)", "")[-2000:], shots)
+        if family == "windows" and time.monotonic() - started > 180 and n % 3 == 0:
+            # Windows 8 and later show a lock screen (just a clock) until a key
+            # is pressed; the sign-in screen behind it has recognisable text.
+            try:
+                runner.send_keys(cfg, ["spc"])
+            except Exception:  # noqa: BLE001
+                pass
         time.sleep(interval)

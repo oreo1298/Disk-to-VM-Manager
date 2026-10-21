@@ -13,7 +13,7 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
 
-from rehome.ui.common import confirm, run_async, show_error  # noqa: E402
+from rehome.ui.common import after_start, confirm, run_async, show_error  # noqa: E402
 from rehome.ui.console.dbus_display import DisplayClient  # noqa: E402
 from rehome.ui.console.view import DisplayView  # noqa: E402
 from rehome.vm import library, runner, usb  # noqa: E402
@@ -176,6 +176,7 @@ class ConsoleWindow(Adw.ApplicationWindow):
         self.stack.set_visible_child_name("connecting")
 
         def started(_):
+            after_start(self.cfg, self.toast)
             self.cfg = library.reload(self.cfg)
             self.refresh()
         run_async(lambda: runner.start(self.cfg), started,

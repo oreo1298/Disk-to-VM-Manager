@@ -8,7 +8,7 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
 
-from rehome.ui.common import confirm, run_async, show_error  # noqa: E402
+from rehome.ui.common import after_start, confirm, run_async, show_error  # noqa: E402
 from rehome.ui.store import load_texture  # noqa: E402
 from rehome.ui.window import STATE_LABEL  # noqa: E402
 from rehome.util.units import human  # noqa: E402
@@ -190,6 +190,7 @@ class VmPage(Gtk.Box):
         def done(_):
             self.btn_start.set_sensitive(True)
             self.window.store.refresh_now()
+            after_start(cfg, self.window.toast)
             if cfg.import_info and not cfg.import_info.first_boot_ok:
                 self.window.toast("Watch the first boot in the console; Rehome will offer guest tools "
                                   "once it works", 6)

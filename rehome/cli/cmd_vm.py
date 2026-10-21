@@ -284,6 +284,9 @@ def cmd_start(args) -> int:
         print(c("Note: running without KVM (software emulation, much slower). See `rehome doctor`.", "33"))
     for w in meta.get("warnings", []):
         print(c("Note: ", "33") + w)
+    from rehome.media import unattended
+    for note in unattended.after_start(cfg, status=lambda s: print(dim(s + " …"))):
+        print(note)
     if args.console:
         return cmd_console(args)
     return 0

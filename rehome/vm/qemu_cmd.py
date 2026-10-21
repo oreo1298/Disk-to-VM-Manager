@@ -666,6 +666,10 @@ class Builder:
             self.a("-initrd", str(self.cfg.resolve(db.initrd)))
         if db.append:
             self.a("-append", db.append)
+        if db.once:
+            # An installer started this way must not be started again by a
+            # reboot (QEMU keeps -kernel): stop instead; the next start boots the disk.
+            self.a("-no-reboot")
 
 
 def _parse_forward(spec: str) -> tuple[str, int, int]:

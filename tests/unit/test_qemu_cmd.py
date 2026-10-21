@@ -223,3 +223,13 @@ def test_missing_disk_file(vm, tmp_path):
     (vm.path / "disks" / "disk0.qcow2").unlink()
     with pytest.raises(RehomeError, match="missing"):
         argv_of(vm, tmp_path, accel="kvm")
+
+
+def test_one_shot_direct_boot_does_not_reboot(vm, tmp_path):
+    from rehome.vm.config import DirectBoot
+    (vm.path / "vmlinuz").write_bytes(b"")
+    vm.direct_boot = DirectBoot(kernel="vmlinuz", append="autoinstall", once=True)
+    a = argv_of(vm, tmp_path, accel="tcg").argv
+    assert values(a, "-kernel") == [str(vm.path / "vmlinuz")] and "-no-reboot" in a
+    vm.direct_boot.once = False
+    assert "-no-reboot" not in argv_of(vm, tmp_path, accel="tcg").argv

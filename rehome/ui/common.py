@@ -153,3 +153,18 @@ def combo_value(r: Adw.ComboRow) -> str:
 
 def adw_at_least(major: int, minor: int) -> bool:
     return (Adw.get_major_version(), Adw.get_minor_version()) >= (major, minor)
+
+
+def after_start(cfg, toast=None) -> None:
+    """Finish starting a VM prepared for an unattended Windows install.
+
+    Presses a key at "Press any key to boot from CD or DVD" (once); a no-op
+    for every other VM. Runs in the background.
+    """
+    from rehome.media import unattended
+
+    def done(notes):
+        if toast and notes:
+            toast(notes[0])
+    run_async(lambda: unattended.after_start(cfg), done, lambda e: None)
+

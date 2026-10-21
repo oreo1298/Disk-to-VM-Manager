@@ -13,7 +13,7 @@ from gi.repository import Adw, GLib, Gtk  # noqa: E402
 from rehome import jobs  # noqa: E402
 from rehome.errors import Cancelled  # noqa: E402
 from rehome.host import info as host_info  # noqa: E402
-from rehome.ui.common import combo_row, combo_value, run_async, show_error  # noqa: E402
+from rehome.ui.common import after_start, combo_row, combo_value, run_async, show_error  # noqa: E402
 from rehome.ui.progress import ProgressPanel  # noqa: E402
 from rehome.ui.wizards.import_vm import _page  # noqa: E402
 from rehome.util.units import human, parse_size  # noqa: E402
@@ -312,8 +312,7 @@ class NewVmWizard(Adw.Window):
 
             def started(c):
                 self.main.app.open_console(c)
-                from rehome.media import unattended
-                run_async(lambda: unattended.after_start(c), None, lambda e: None)
+                after_start(c, self.main.toast)
                 self.close()
             run_async(go, started, lambda e: (start.set_sensitive(True),
                                               show_error(self, e, "The VM could not start")))

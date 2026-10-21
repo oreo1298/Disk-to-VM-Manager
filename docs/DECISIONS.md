@@ -384,3 +384,37 @@ checked first. Images and expectations come from an `images.toml` file next
 to the user's images, so real Windows or 9x disks never have to be committed
 or downloaded.
 
+
+## D22. Quick Create and unattended installation
+
+- **Sources.** Each catalog entry (`data/catalog.toml`) resolves its current
+  release from the project's official site. Rehome verifies every download
+  against the checksum file the project publishes, or SourceForge's SHA-256
+  for ReactOS, says exactly what was verified, and resumes interrupted
+  downloads. Windows entries only open Microsoft's download page.
+- **Windows answer file.** Rehome writes its own `autounattend.xml`, put on
+  a small `UNATTEND` disc, instead of libosinfo's script. libosinfo's
+  Windows script (osinfo-db 2025-06) has no Windows 11 link, creates a
+  single BIOS-style partition (wrong for UEFI), and requires a product key.
+  Rehome's file:
+  - partitions for UEFI or BIOS,
+  - creates a local account using Microsoft's documented settings,
+  - leaves the product key empty unless the user gives one (for evaluation
+    media),
+  - contains no TPM, Secure Boot, Microsoft-account or activation bypasses.
+
+  Rehome presses a key once at "Press any key to boot from CD or DVD", on
+  every start path (CLI, VM page, console, wizard).
+- **Linux answer files.**
+  - Ubuntu (Server 20.04+, Desktop 24.04+): its own autoinstall format on
+    a `cidata` disc.
+  - Fedora/RHEL family, openSUSE and Debian: libosinfo's scripts.
+  - The installer's kernel is started directly, once (`-kernel`, with
+    `-no-reboot`), and told to power off at the end. The next start then
+    boots the installed disk, and a reboot can never start the installer
+    again. This is incompatible with Secure Boot, which is refused up front
+    with an explanation.
+- **Secrets.** Answer files are created mode 0600 in a 0700 folder. The
+  Ubuntu config stores only a password hash. Passwords never appear in logs.
+  `rehome unattended-cleanup` and the Summary tab remove the files after the
+  installation.

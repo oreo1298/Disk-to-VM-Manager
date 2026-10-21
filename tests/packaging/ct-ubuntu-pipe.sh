@@ -34,15 +34,15 @@ apt_manual >/work/manual-before
 cp -L /etc/default/locale /work/locale-before 2>/dev/null || : >/work/locale-before
 snapshot /work/s0
 
-section "install: curl | bash -s -- --yes --with-optional (latest release v0.1.0)"
+section "install: curl | bash -s -- --yes --with-optional (latest release v$V1)"
 out="$(pipe release-v1.json --yes --with-optional 2>&1)"
 rc=$?
 printf '%s\n' "$out"
 check "exit 0" test "$rc" -eq 0
 check "looked up the latest release" contains "$out" "Looking up the latest release ($BASE/release-v1.json)"
 check "SHA-256 verified" contains "$out" "SHA-256 verified"
-check "manifest source is the release" contains "$(mjson 'd["source"]')" "release v0.1.0"
-check "version 0.1.0" test "$(/usr/local/bin/rehome --version)" = "rehome 0.1.0"
+check "manifest source is the release" contains "$(mjson 'd["source"]')" "release v$V1"
+check "version $V1" test "$(/usr/local/bin/rehome --version)" = "rehome $V1"
 pk="$(mjson '" ".join(d["packages"]["installed"])')"
 # shellcheck disable=SC2016
 check "optional packages recorded (passt, virtiofsd, virt-v2v)" bash -c 'for p in passt virtiofsd virt-v2v python3; do [[ " $1 " == *" $p "* ]] || exit 1; done' _ "$pk"
@@ -50,16 +50,16 @@ check "root is not added to the kvm group" test "$(mjson 'd["groups"]')" = "[]"
 check "doctor ran" contains "$out" "Rehome host check"
 check "the installer keeps a copy of itself" test -x /usr/local/share/rehome/installer/install.sh
 
-section "update through the release API (v0.1.1)"
+section "update through the release API (v$V2)"
 out="$(REHOME_RELEASES_API="$BASE/release-v2.json" /usr/local/share/rehome/installer/install.sh --update --yes 2>&1)"
 rc=$?
 printf '%s\n' "$out"
 check "exit 0" test "$rc" -eq 0
 check "SHA-256 verified" contains "$out" "SHA-256 verified"
-check "version 0.1.1" test "$(/usr/local/bin/rehome --version)" = "rehome 0.1.1"
+check "version $V2" test "$(/usr/local/bin/rehome --version)" = "rehome $V2"
 check "packages record kept" test "$(mjson '" ".join(d["packages"]["installed"])')" = "$pk"
 out="$(pipe release-v2.json --update --yes 2>&1)"
-check "one-liner --update: already up to date" contains "$out" "Rehome 0.1.1 is already up to date."
+check "one-liner --update: already up to date" contains "$out" "Rehome $V2 is already up to date."
 
 section "purge with the one-liner"
 mapfile -t files < <(mjson '"\n".join(d["files"])')
@@ -88,7 +88,7 @@ out="$(pipe release-bad.json --yes --skip-deps 2>&1)"
 rc=$?
 printf '%s\n' "$out"
 check "fails" test "$rc" -ne 0
-check "reports the SHA-256 mismatch" contains "$out" "SHA-256 mismatch for rehome-0.1.0.tar.gz"
+check "reports the SHA-256 mismatch" contains "$out" "SHA-256 mismatch for rehome-$V1.tar.gz"
 check "nothing installed" test ! -e /usr/local/share/rehome
 check "tells what it changed before stopping (python3 bootstrap)" contains "$out" "packages installed: python3"
 

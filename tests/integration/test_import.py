@@ -188,3 +188,53 @@ def test_freedos_import_boots_and_source_unchanged(images, mode):
     assert sha256(src) == before
     from rehome.importer import verify
     assert all(r["unchanged"] for r in verify(cfg))
+
+
+@pytest.mark.skipif(bool(freedos.available()), reason="cannot build FreeDOS image")
+@pytest.mark.parametrize("nbd_backend", ["builtin", "nbdkit"])
+def test_physical_disk_import_with_exclusive_helper(images, monkeypatch, nbd_backend):
+    """A "physical disk" (block source) through a helper whose opens are exclusive.
+
+    The real helper opens disks with O_EXCL, so a second open of the same disk
+    fails while the first fd is held. The fake helper below reproduces that
+    with an exclusive lock per open file description. Regression: --verify
+    used to ask the helper for a second fd while the import held the first.
+    """
+    import fcntl
+    import os
+    from rehome import importer
+    from rehome.disk import sources
+    from rehome.util.proc import which
+    if nbd_backend == "nbdkit" and not which("nbdkit"):
+        pytest.skip("nbdkit is not installed")
+    if nbd_backend == "builtin":
+        monkeypatch.setenv("REHOME_NO_NBDKIT", "1")
+    src = images / "freedos-block.img"
+    if not src.exists():
+        freedos.build(src)
+    before = sha256(src)
+
+    def describe_as_disk(path):
+        s = sources.describe_image(path)
+        s.kind, s.format, s.label = "block", "raw", "Fake SATA disk"
+        return s
+    monkeypatch.setattr(sources, "describe", describe_as_disk)
+
+    def exclusive_helper(path):
+        fd = os.open(path, os.O_RDONLY | os.O_CLOEXEC)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            os.close(fd)
+            from rehome.errors import RehomeError
+            raise RehomeError(f"{path} is busy (used by another program).", code="busy")
+        return fd
+
+    a = importer.analyze([str(src)], smart_check=False, fd_provider=exclusive_helper)
+    assert a.sources[0].kind == "block" and a.os.distro == "freedos"
+    cfg = importer.run(a, importer.ImportOptions(mode="linked", verify_hash=True),
+                       fd_provider=exclusive_helper)
+    d = cfg.disks[0]
+    assert d.source.kind == "block" and d.source.sha256_before == before
+    assert [r["unchanged"] for r in importer.verify(cfg, fd_provider=exclusive_helper)] == [True]
+    assert sha256(src) == before

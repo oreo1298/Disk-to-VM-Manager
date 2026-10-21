@@ -11,7 +11,7 @@
 %global __brp_python_bytecompile %{nil}
 
 Name:           rehome
-Version:        0.1.0
+Version:        0.1.1
 Release:        1%{?dist}
 Summary:        Turn installed operating systems into QEMU/KVM virtual machines
 License:        GPL-3.0-or-later
@@ -35,8 +35,6 @@ Requires:       swtpm
 Requires:       libguestfs
 Requires:       python3-libguestfs
 Requires:       guestfs-tools
-Requires:       nbdkit
-Requires:       nbdkit-basic-plugins
 Requires:       smartmontools
 Requires:       polkit
 Requires:       python3 >= 3.11
@@ -56,6 +54,8 @@ Requires:       util-linux
 Recommends:     qemu-arm
 Recommends:     qemu-uefi-aarch64
 Recommends:     virt-v2v
+Recommends:     nbdkit
+Recommends:     nbdkit-basic-plugins
 Recommends:     virtiofsd
 Recommends:     passt
 Recommends:     gnu_ddrescue
@@ -77,8 +77,6 @@ Requires:       swtpm-tools
 Requires:       libguestfs
 Requires:       python3-libguestfs
 Requires:       guestfs-tools
-Requires:       nbdkit-server
-Requires:       nbdkit-basic-plugins
 Requires:       smartmontools
 Requires:       polkit
 Requires:       python3 >= 3.11
@@ -96,6 +94,8 @@ Requires:       util-linux
 Recommends:     qemu-system-aarch64
 Recommends:     edk2-aarch64
 Recommends:     virt-v2v
+Recommends:     nbdkit-server
+Recommends:     nbdkit-basic-plugins
 Recommends:     virtiofsd
 Recommends:     passt
 Recommends:     ddrescue
@@ -139,5 +139,9 @@ python3 packaging/layout.py install \
 %{_datadir}/icons/hicolor/symbolic/apps/io.github.oreo1298.Rehome-symbolic.svg
 
 %changelog
+* Wed Oct 21 2026 Rehome contributors - 0.1.1-1
+- Built-in NBD server when nbdkit is missing; Secure Boot key enrollment
+  with virt-fw-vars; clearer libguestfs diagnosis in rehome doctor.
+
 * Tue Oct 20 2026 Rehome contributors - 0.1.0-1
 - First package.

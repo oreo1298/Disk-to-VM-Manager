@@ -19,6 +19,8 @@ def isolated_home(tmp_path, monkeypatch):
     run = tempfile.mkdtemp(prefix="rh", dir="/tmp")
     monkeypatch.setenv("REHOME_RUNTIME_DIR", run)
     monkeypatch.setenv("REHOME_DATA_DIR", str(ROOT / "data"))
+    from rehome.util.proc import which
+    which.cache_clear()            # tests change PATH
     yield home
     shutil.rmtree(run, ignore_errors=True)
 

@@ -41,7 +41,7 @@ def to_disk_source(src: Source, mode: str, original_bus: str = "") -> DiskSource
 class SourceAccess(contextlib.AbstractContextManager):
     """Make sources readable by offline tools for the duration of a ``with`` block.
 
-    Physical disks: open via the helper and serve with nbdkit at the stable
+    Physical disks: open via the helper and serve over NBD at the stable
     socket path the overlay refers to. E01: mount with ewfmount.
     """
 
@@ -52,6 +52,23 @@ class SourceAccess(contextlib.AbstractContextManager):
         self._fds: list[int] = []
         self._ewf: list[str] = []
         self.paths: dict[str, str] = {}   # source path -> path/URI readable now
+        self.fds: dict[str, int] = {}     # physical disk path -> the exclusive fd held
+
+    def fd_provider_for_held(self, fallback=None):
+        """An fd provider that dups the fds held here.
+
+        A physical disk is opened exclusively (O_EXCL), so while this object
+        holds it, the helper cannot open it a second time (e.g. for hashing).
+        """
+        def provide(path: str) -> int:
+            if path in self.fds:
+                return os.dup(self.fds[path])
+            provider = fallback
+            if provider is None:
+                from rehome.disk import privileged
+                provider = privileged.open_disk_readonly
+            return provider(path)
+        return provide
 
     def __enter__(self):
         try:
@@ -64,6 +81,7 @@ class SourceAccess(contextlib.AbstractContextManager):
                         provider = privileged.open_disk_readonly
                     fd = provider(path)
                     self._fds.append(fd)
+                    self.fds[path] = fd
                     sock = nbd.socket_for(path)
                     self._servers.append(nbd.NbdServer(fd, sock).start())
                     self.paths[path] = nbd.uri(sock)
@@ -88,6 +106,7 @@ class SourceAccess(contextlib.AbstractContextManager):
         for p in self._ewf:
             ewf.unmount(p)
         self._servers, self._fds, self._ewf = [], [], []
+        self.fds = {}
         return False
 
 

@@ -65,6 +65,10 @@ def gather(refresh: bool = False) -> HostInfo:
     with _lock:
         if _cached is not None and not refresh:
             return _cached
+        if refresh:
+            # Programs may have been installed since (Host Check's "Check again").
+            from rehome.util.proc import which
+            which.cache_clear()
         c = cpu_mod.detect_cpu()
         osr = sys_mod.detect_os_release()
         _cached = HostInfo(

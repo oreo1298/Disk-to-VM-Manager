@@ -5,7 +5,9 @@
 # fedora (dnf), suse (zypper).
 #
 # `required = true` components are installed by default by install.sh;
-# optional ones are offered.
+# optional ones are offered. `not_needed` lists families that do not need a
+# component at all; `aur` names packages that Arch only has in the AUR (the
+# installer skips them there, `rehome doctor` mentions them).
 
 [qemu]
 label = "QEMU (x86 system emulator, tools and UI modules)"
@@ -35,6 +37,15 @@ debian = ["ovmf"]
 fedora = ["edk2-ovmf"]
 suse = ["qemu-ovmf-x86_64"]
 
+[virt-firmware]
+# Enrolls Microsoft's Secure Boot keys (Windows 11) where the distribution
+# ships only an empty variable store. Debian, Fedora and openSUSE ship a
+# pre-enrolled store, so only Arch needs it.
+label = "virt-firmware (enrolls Secure Boot keys for Windows 11)"
+required = true
+arch = ["virt-firmware"]
+not_needed = ["debian", "fedora", "suse"]
+
 [aavmf]
 label = "UEFI firmware for ARM64 guests"
 required = false
@@ -62,15 +73,16 @@ suse = ["libguestfs", "python3-libguestfs", "guestfs-tools"]
 [virt-v2v]
 label = "virt-v2v (virtio conversion for Windows 7+ and major Linux distros)"
 required = false
-arch = ["virt-v2v"]
+aur = ["virt-v2v"]           # Arch: not in the official repositories
 debian = ["virt-v2v"]
 fedora = ["virt-v2v"]
 suse = ["virt-v2v"]
 
 [nbdkit]
-label = "nbdkit (serves physical disks to offline tools)"
-required = true
-arch = ["nbdkit"]
+# Optional: Rehome has a built-in read-only NBD server (rehome/disk/nbdserve.py).
+label = "nbdkit (serves physical disks to offline tools; Rehome has a built-in fallback)"
+required = false
+aur = ["nbdkit"]             # Arch: not in the official repositories
 debian = ["nbdkit"]
 fedora = ["nbdkit-server", "nbdkit-basic-plugins"]
 suse = ["nbdkit", "nbdkit-basic-plugins"]
@@ -150,7 +162,7 @@ suse = ["typelib-1_0-Libosinfo-1_0", "libosinfo", "osinfo-db"]
 [media-tools]
 label = "ISO and FAT tools (unattended installs)"
 required = true
-arch = ["xorriso", "dosfstools", "mtools"]
+arch = ["libisoburn", "dosfstools", "mtools"]   # libisoburn provides xorriso
 debian = ["xorriso", "dosfstools", "mtools"]
 fedora = ["xorriso", "dosfstools", "mtools"]
 suse = ["xorriso", "dosfstools", "mtools"]

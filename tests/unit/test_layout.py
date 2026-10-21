@@ -197,8 +197,14 @@ def test_cli_list_and_deps():
     assert "virt-v2v" in opt and not set(req) & set(opt)
     assert run("deps", "--family", "arch", "--format", "deb").strip().startswith("qemu-desktop, ")
     tsv = [line.split("\t") for line in run("deps", "--family", "fedora", "--all", "--format", "tsv").splitlines()]
-    assert {row[0] for row in tsv} == set(layout.load_components(ROOT))
+    comps = layout.load_components(ROOT)
+    assert {row[0] for row in tsv} == {k for k, c in comps.items()
+                                       if "fedora" not in c.get("not_needed", [])}
+    assert "virt-firmware" not in {row[0] for row in tsv}       # Fedora ships enrolled keys
     assert all(len(row) == 4 for row in tsv)
+    arch = {line.split("\t")[0] for line in
+            run("deps", "--family", "arch", "--all", "--format", "tsv").splitlines()}
+    assert "virt-firmware" in arch and not {"nbdkit", "virt-v2v"} & arch    # AUR-only
 
 
 # --- packaging files stay in sync ------------------------------------------------------

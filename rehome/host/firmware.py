@@ -13,10 +13,15 @@ images, so we never hard-code paths unless no descriptors exist at all.
 
 from __future__ import annotations
 
+import dataclasses
 import fnmatch
+import hashlib
 import json
+import logging
 import os
 from dataclasses import dataclass, field
+
+log = logging.getLogger(__name__)
 
 SYSTEM_DIRS = ("/usr/share/qemu/firmware", "/etc/qemu/firmware")
 
@@ -221,8 +226,65 @@ def select(req: FirmwareRequest, available: list[Firmware]) -> Firmware | None:
     return candidates[0][1]
 
 
+def _for_arch(fw: Firmware, arch: str) -> bool:
+    return any(t[0] == arch for t in fw.targets)
+
+
+def enrolled_dir():
+    from rehome import paths
+    return paths.data_dir() / "firmware"
+
+
+def self_enrolled(available: list[Firmware], arch: str) -> list[Firmware]:
+    """Secure Boot firmware with Microsoft's keys enrolled by Rehome itself.
+
+    Some distributions (Arch) ship Secure Boot capable OVMF but only an empty
+    variable store. Windows 11 needs Microsoft's keys, so Rehome enrolls them
+    into a copy of the store with ``virt-fw-vars`` (package virt-firmware),
+    the tool Fedora uses to build its pre-enrolled store. The copy is made
+    once per template (keyed by its content) under the user's data dir.
+    """
+    if arch != "x86_64" or any(f.secure_boot and f.enrolled_keys and _for_arch(f, arch)
+                               for f in available):
+        return []
+    from rehome.util.proc import run, which
+    tool = which("virt-fw-vars")
+    out, seen = [], set()
+    for fw in available:
+        if not (fw.is_uefi and fw.secure_boot and not fw.enrolled_keys and _for_arch(fw, arch)
+                and fw.device == "flash" and fw.mode == "split" and fw.nvram_template
+                and fw.nvram_format == "raw" and os.path.isfile(fw.nvram_template)):
+            continue
+        try:
+            with open(fw.nvram_template, "rb") as f:
+                digest = hashlib.sha256(f.read()).hexdigest()[:16]
+        except OSError:
+            continue
+        stem = os.path.basename(fw.nvram_template).split(".")[0]
+        target = enrolled_dir() / f"{stem}-{digest}.ms.fd"
+        if not target.exists():
+            if not tool or digest in seen:
+                continue
+            seen.add(digest)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            tmp = target.with_suffix(".tmp")
+            try:
+                run([tool, "--input", fw.nvram_template, "--output", str(tmp),
+                     "--enroll-redhat", "--secure-boot"], timeout=120)
+                os.replace(tmp, target)
+            except Exception as e:  # noqa: BLE001 - reported by `rehome doctor`
+                log.warning("could not enroll Secure Boot keys: %s", e)
+                tmp.unlink(missing_ok=True)
+                continue
+        out.append(dataclasses.replace(
+            fw, path=f"{fw.path} (Microsoft keys enrolled by Rehome)",
+            description=fw.description + ", Microsoft keys enrolled by Rehome",
+            nvram_template=str(target), features=fw.features | {"enrolled-keys"}))
+    return out
+
+
 def discover(arch: str) -> list[Firmware]:
     descs = load_descriptors()
-    if not any(f.is_uefi and any(t[0] == arch for t in f.targets) for f in descs):
+    if not any(f.is_uefi and _for_arch(f, arch) for f in descs):
         descs += fallback_firmware(arch)
-    return descs
+    return descs + self_enrolled(descs, arch)

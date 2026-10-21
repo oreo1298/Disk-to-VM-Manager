@@ -252,8 +252,9 @@ def run(a: Analysis, opts: ImportOptions, progress: jobs.Progress | None = None,
         with overlay.SourceAccess(a.sources, fd_provider=fd_provider) as access:
             if opts.verify_hash:
                 progress.stage("Hashing the source")
+                held = access.fd_provider_for_held(fd_provider)
                 for i, s in enumerate(a.sources):
-                    digest = _hash(s, progress, i, len(a.sources), fd_provider)
+                    digest = _hash(s, progress, i, len(a.sources), held)
                     cfg.disks[i].source = overlay.to_disk_source(s, opts.mode)
                     cfg.disks[i].source.sha256_before = digest
                     hashing.log_event(log, "hash-before", source=s.stable_path or s.path,

@@ -52,6 +52,10 @@ record() {   # NAME STATUS DETAIL
     printf '%-14s %-5s %s\n' "$1" "$2" "$3"
 }
 
+next_version() {   # 0.1.1 -> 0.1.2
+    python3 -c 'import sys; p = sys.argv[1].split("."); p[-1] = str(int(p[-1]) + 1); print(".".join(p))' "$1"
+}
+
 have_docker() { command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; }
 
 # ct NAME IMAGE SCRIPT ARGS...: run tests/packaging/SCRIPT inside IMAGE.
@@ -61,7 +65,10 @@ ct() {
     local -a vols=(-v "$SNAP:/src:ro" -v "$BUNDLE:/opt/rhtest:ro" -v "$PKGS:/pkgs:ro")
     [[ "$image" == "$IMG_UBUNTU" ]] && vols+=(-v "$APT_CACHE_VOLUME:/var/cache/apt/archives")
     local log="$LOGS/$name.log" start=$SECONDS
-    docker run --rm --network host "${vols[@]}" "$image" bash "/src/tests/packaging/$script" "$@" >"$log" 2>&1
+    local v1
+    v1="$(python3 "$SNAP/packaging/layout.py" version)"
+    docker run --rm --network host "${vols[@]}" -e "REHOME_V1=$v1" -e "REHOME_V2=$(next_version "$v1")" \
+        "$image" bash "/src/tests/packaging/$script" "$@" >"$log" 2>&1
     local rc=$? summary
     summary="$(grep -E '^RESULT:' "$log" | tail -n 1)"
     if ((rc == 0)) && [[ -n "$summary" ]]; then
@@ -127,27 +134,28 @@ build_dummy_rpms() {   # OUTDIR: tiny packages to test the reverse-dependency lo
 }
 
 start_release_server() {   # mock GitHub: release JSON + assets, served on 127.0.0.1
-    local ver port v2dir
+    local ver ver2 port v2dir
     ver="$(python3 "$SNAP/packaging/layout.py" version)"
+    ver2="$(next_version "$ver")"
     rm -rf "$SRV"
     mkdir -p "$SRV/v1" "$SRV/v2" "$SRV/bad"
     cp "$SNAP/install.sh" "$SRV/install.sh"
     "$SNAP/packaging/dist.sh" --outdir "$SRV/v1" >/dev/null
     v2dir="$(mktemp -d)"
     tar -C "$v2dir" -xzf "$SRV/v1/rehome-$ver.tar.gz"
-    sed -i 's/^__version__ = .*/__version__ = "0.1.1"/' "$v2dir/rehome-$ver/rehome/__init__.py"
-    mv "$v2dir/rehome-$ver" "$v2dir/rehome-0.1.1"
-    tar -C "$v2dir" -czf "$SRV/v2/rehome-0.1.1.tar.gz" rehome-0.1.1
-    (cd "$SRV/v2" && sha256sum rehome-0.1.1.tar.gz >rehome-0.1.1.tar.gz.sha256)
+    sed -i "s/^__version__ = .*/__version__ = \"$ver2\"/" "$v2dir/rehome-$ver/rehome/__init__.py"
+    mv "$v2dir/rehome-$ver" "$v2dir/rehome-$ver2"
+    tar -C "$v2dir" -czf "$SRV/v2/rehome-$ver2.tar.gz" "rehome-$ver2"
+    (cd "$SRV/v2" && sha256sum "rehome-$ver2.tar.gz" >"rehome-$ver2.tar.gz.sha256")
     rm -rf "$v2dir"
     cp "$SRV/v1/rehome-$ver.tar.gz" "$SRV/bad/"
     printf '%064d  rehome-%s.tar.gz\n' 0 "$ver" >"$SRV/bad/rehome-$ver.tar.gz.sha256"
     cp "$SRV/v1/rehome-$ver.tar.gz" "$SRV/main.tar.gz"
     port="$(python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')"
     BASE="http://127.0.0.1:$port"
-    release_json v0.1.0 "$BASE/v1/rehome-$ver.tar.gz" >"$SRV/release-v1.json"
-    release_json v0.1.1 "$BASE/v2/rehome-0.1.1.tar.gz" >"$SRV/release-v2.json"
-    release_json v0.1.0 "$BASE/bad/rehome-$ver.tar.gz" >"$SRV/release-bad.json"
+    release_json "v$ver" "$BASE/v1/rehome-$ver.tar.gz" >"$SRV/release-v1.json"
+    release_json "v$ver2" "$BASE/v2/rehome-$ver2.tar.gz" >"$SRV/release-v2.json"
+    release_json "v$ver" "$BASE/bad/rehome-$ver.tar.gz" >"$SRV/release-bad.json"
     python3 -m http.server --bind 127.0.0.1 --directory "$SRV" "$port" >"$LOGS/http.log" 2>&1 &
     SERVER_PID=$!
     for _ in 1 2 3 4 5 6 7 8 9 10; do

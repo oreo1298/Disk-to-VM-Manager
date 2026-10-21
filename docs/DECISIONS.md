@@ -119,7 +119,8 @@ manager closes.
     helper.
   - For offline tools (qemu-img, libguestfs, virt-v2v), the same fd is
     served by `nbdkit file fd=N` on a per-user Unix socket, and that socket
-    is what the overlay header names.
+    is what the overlay header names. Where nbdkit is not packaged, Rehome's
+    own read-only NBD server does the same (D23).
 - **Copy import:** `qemu-img convert -O qcow2` (sparse, compressed off),
   after which the source is no longer needed.
 - **Image formats:**
@@ -418,3 +419,36 @@ or downloaded.
   Ubuntu config stores only a password hash. Passwords never appear in logs.
   `rehome unattended-cleanup` and the Summary tab remove the files after the
   installation.
+
+## D23. What Arch does not package
+
+Real-world feedback from CachyOS (Arch family) showed two gaps in Arch's
+official repositories.
+
+- **nbdkit is AUR-only.** Rehome now ships a small read-only NBD server
+  (`rehome/disk/nbdserve.py`, standard library only). It implements the
+  fixed-newstyle handshake, read, flush and disconnect, and refuses every
+  write with EPERM. It serves the helper's fd whenever nbdkit is missing, so
+  nbdkit is optional everywhere.
+  - **Tested** against qemu-img (a byte-identical full copy), qemu-io
+    (writes refused) and libguestfs (filesystems listed). A full
+    physical-disk import ran from a loop device through the real helper:
+    linked with `--verify` and copy, booted, source hash unchanged.
+  - virt-v2v is AUR-only too. `data/packages.toml` lists AUR-only packages
+    under `aur`, so the installer never asks pacman for them and the
+    doctor points to the AUR instead.
+- **No Microsoft-enrolled Secure Boot store.** Arch's edk2-ovmf ships
+  Secure Boot capable code but only an empty `OVMF_VARS.4m.fd`.
+  - Rehome enrolls the keys into a private copy of that store, once per
+    template, under `~/.local/share/rehome/firmware/`. It uses
+    `virt-fw-vars --enroll-redhat --secure-boot` from Arch's
+    `virt-firmware`, the same tool and certificates as Fedora's
+    pre-enrolled store.
+  - The copy contains Microsoft's KEK 2011/2023, the Windows Production PCA
+    2011, Windows UEFI CA 2023 and UEFI CA 2011/2023.
+  - **Tested** by masking the host's descriptors with Arch-style ones. An
+    Ubuntu guest booted with Secure Boot enforced: shim accepted, kernel
+    lockdown active.
+  - `virt-firmware` is a required package only for the Arch family, since
+    the others ship a pre-enrolled store.
+

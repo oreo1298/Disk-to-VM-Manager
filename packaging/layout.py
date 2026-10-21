@@ -35,8 +35,6 @@ import datetime as _dt
 import json
 import os
 import re
-import shutil
-import stat
 import sys
 import tempfile
 from dataclasses import dataclass, field
@@ -484,6 +482,8 @@ def deps(family: str, which: str = "required", source: Path = SOURCE_ROOT) -> li
         required = bool(comp.get("required", False))
         if (which == "required" and not required) or (which == "optional" and required):
             continue
+        if family in comp.get("not_needed", []) or (family == "arch" and comp.get("aur")):
+            continue                # not needed there, or only in the AUR
         out.append({"key": key, "label": comp.get("label", key), "required": required,
                     "packages": list(comp.get(family, []))})
     return out

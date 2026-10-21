@@ -6,7 +6,7 @@
 # `updpkgsums` and `makepkg --printsrcinfo > .SRCINFO` (see docs/PACKAGING.md).
 
 pkgname=rehome
-pkgver=0.1.0
+pkgver=0.1.1
 pkgrel=1
 pkgdesc='Turn installed operating systems into QEMU/KVM virtual machines'
 arch=('any')
@@ -15,10 +15,10 @@ license=('GPL-3.0-or-later')
 depends=(
   'qemu-desktop'
   'edk2-ovmf'
+  'virt-firmware'
   'swtpm'
   'libguestfs'
   'guestfs-tools'
-  'nbdkit'
   'smartmontools'
   'polkit'
   'python>=3.11'
@@ -27,7 +27,7 @@ depends=(
   'libadwaita'
   'libosinfo'
   'osinfo-db'
-  'xorriso'
+  'libisoburn'
   'dosfstools'
   'mtools'
   'usbutils'
@@ -37,7 +37,6 @@ depends=(
 optdepends=(
   'qemu-system-aarch64: run ARM64 guests'
   'edk2-aarch64: UEFI firmware for ARM64 guests'
-  'virt-v2v: virtio conversion for Windows 7+ and major Linux distributions'
   'virtiofsd: shared folders'
   'passt: fast unprivileged NAT networking'
   'ddrescue: rescue failing disks to an image'

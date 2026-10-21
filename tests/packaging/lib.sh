@@ -3,6 +3,12 @@
 
 PASS=0
 FAIL=0
+# Version of the source under test and the "next" version the update tests
+# fake (set by run.sh, so these tests do not change with every release).
+# shellcheck disable=SC2034  # used by the scripts that source this file
+V1="${REHOME_V1:-}"
+# shellcheck disable=SC2034
+V2="${REHOME_V2:-}"
 
 pass() { PASS=$((PASS + 1)); printf 'PASS: %s\n' "$*"; }
 fail() { FAIL=$((FAIL + 1)); printf 'FAIL: %s\n' "$*"; }

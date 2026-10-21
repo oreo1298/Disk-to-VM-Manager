@@ -58,6 +58,14 @@ def _install(keys: list[str], family: str) -> list[str]:
     return [cmd] if cmd else []
 
 
+def _aur_note(keys: list[str], family: str) -> str:
+    aur = packages.aur_packages(keys, family)
+    if not aur:
+        return ""
+    return (f" It is not in Arch's official repositories; install {' '.join(aur)} from the AUR "
+            f"with your AUR helper (for example `paru -S {' '.join(aur)}`) if you want it.")
+
+
 def check_cpu(r: Report, h: HostInfo) -> None:
     c = h.cpu
     sockets, cores, threads = h.topology
@@ -279,12 +287,24 @@ def check_firmware(r: Report, h: HostInfo) -> None:
               "No UEFI firmware was found; UEFI guests (Windows 11, most modern Linux) cannot boot.",
               fix="Install the UEFI firmware package.", commands=_install([key], fam))
     if arch == "x86_64":
-        if sb:
+        sb_empty = choose_firmware(h, arch, machine, uefi=True, secure_boot=True)
+        if sb and "enrolled by Rehome" in sb.path:
+            r.add("fw.secureboot", "Virtualization", "Secure Boot firmware", OK,
+                  f"{sb.executable} with Microsoft keys enrolled by Rehome "
+                  f"({sb.nvram_template}).")
+        elif sb:
             r.add("fw.secureboot", "Virtualization", "Secure Boot firmware", OK,
                   f"{sb.executable} with Microsoft keys enrolled.")
+        elif sb_empty:
+            r.add("fw.secureboot", "Virtualization", "Secure Boot firmware", WARN,
+                  f"Your UEFI firmware supports Secure Boot ({sb_empty.executable}), but your "
+                  "distribution ships no variable store with Microsoft's keys, which Windows 11 "
+                  "needs. Rehome can enroll the keys itself with virt-fw-vars.",
+                  fix="Install virt-firmware, then run `rehome doctor` again.",
+                  commands=_install(["virt-firmware"], fam))
         else:
             r.add("fw.secureboot", "Virtualization", "Secure Boot firmware", WARN,
-                  "No Secure Boot firmware with Microsoft keys was found; Windows 11 needs it.",
+                  "No Secure Boot capable UEFI firmware was found; Windows 11 needs it.",
                   fix="Install the full UEFI firmware package.", commands=_install([key], fam))
 
 
@@ -300,8 +320,11 @@ def check_tools(r: Report, h: HostInfo) -> None:
             r.add(f"tool.{key}", section, title, OK,
                   ok_msg or f"{t.label} {t.version}".strip() + (f" — {t.note}" if t.note else ""))
         else:
+            cmds = _install([pkg_key], fam)
+            fix = f"Install {t.label}." if cmds else ""
+            fix += _aur_note([pkg_key], fam)
             r.add(f"tool.{key}", section, title, status_missing, msg_missing,
-                  fix=f"Install {t.label}.", commands=_install([pkg_key], fam))
+                  fix=fix.strip(), commands=cmds)
 
     tool("swtpm", "Virtualization", "Software TPM", WARN,
          "swtpm is missing: Windows 11 and BitLocker guests need a TPM 2.0.", "swtpm")
@@ -309,17 +332,26 @@ def check_tools(r: Report, h: HostInfo) -> None:
         r.add("tool.swtpm_setup", "Virtualization", "TPM setup", WARN,
               "swtpm_setup is missing, so new TPMs cannot be initialised.",
               fix="Install the swtpm tools.", commands=_install(["swtpm"], fam))
-    tool("libguestfs", "Import", "libguestfs", ERROR,
-         "libguestfs' Python bindings are missing: imported systems cannot be identified or "
-         "patched.", "libguestfs", ok_msg="libguestfs Python bindings are installed.")
     if inv["libguestfs"].found:
+        r.add("tool.libguestfs", "Import", "libguestfs", OK, "libguestfs Python bindings are installed.")
         check_appliance_kernel(r, fam)
+    else:
+        detail, fix = tools_mod.guestfs_diagnosis(inv["libguestfs"].note)
+        # Installing packages only helps when something is missing (on Arch the
+        # bindings come with libguestfs itself, so reinstalling changes nothing).
+        missing = detail.startswith("libguestfs is not installed") or \
+            ("without Python bindings" in detail and fam != "arch")
+        r.add("tool.libguestfs", "Import", "libguestfs", ERROR,
+              "Imported systems cannot be identified or patched: " + detail,
+              fix=fix, commands=_install(["libguestfs"], fam) if missing else [])
     tool("virt-v2v", "Import", "virt-v2v", INFO,
          "virt-v2v is not installed. Rehome's own patcher will be used; virt-v2v adds "
          "automatic virtio driver installation for Windows 7+ and some Linux distributions.",
          "virt-v2v")
-    tool("nbdkit", "Import", "nbdkit", WARN,
-         "nbdkit is missing: physical disks cannot be inspected or copied.", "nbdkit")
+    tool("nbdkit", "Import", "nbdkit", INFO,
+         "nbdkit is not installed; Rehome serves physical disks to its tools with its own "
+         "built-in server instead (the same result, a little slower for whole-disk copies).",
+         "nbdkit")
     tool("smartctl", "Import", "Disk health (SMART)", WARN,
          "smartmontools is missing: disk health cannot be checked before import.", "smartmontools")
     tool("ddrescue", "Import", "ddrescue", INFO,

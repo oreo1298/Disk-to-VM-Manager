@@ -36,3 +36,12 @@ def install_command(keys: list[str], family: str) -> str | None:
     if not pkgs or not tmpl:
         return None
     return tmpl.format(pkgs=" ".join(pkgs))
+
+
+def aur_packages(keys: list[str], family: str) -> list[str]:
+    """Packages only available from the AUR (Arch family), never installed by Rehome."""
+    if family != "arch":
+        return []
+    comps = components()
+    return [p for k in keys for p in comps.get(k, {}).get("aur", [])]
+

@@ -16,7 +16,7 @@ Rehome is a Linux desktop app for QEMU/KVM. It does two jobs:
 
 Everything the GUI does is also available on the command line (`rehome --help`).
 
-> **Status: 0.1.0, first release.** The engine, CLI and GUI work, and they are
+> **Status: 0.1.1, early release.** The engine, CLI and GUI work, and they are
 > tested on synthetic disks and on real FreeDOS, ReactOS and Ubuntu guests. Real
 > Windows and 9x installations were not tested yet; see
 > [What has been tested](#what-has-been-tested).
@@ -302,6 +302,9 @@ scripts. Add `-v` to any command for technical details.
 | Problem | What to do |
 |---|---|
 | "KVM is not available" | Run `rehome doctor`. Enable VT-x/SVM in the firmware settings, check that the `kvm_intel`/`kvm_amd` module is loaded, and add yourself to the `kvm` group (then log out and in). Inside another VM, enable nested virtualization on the outer host. |
+| "No variable store with Microsoft's keys" (Arch, Manjaro, EndeavourOS, CachyOS) | Arch's `edk2-ovmf` has Secure Boot firmware but no Microsoft keys. Install `virt-firmware` (`sudo pacman -S --needed virt-firmware`); Rehome then enrolls the keys into its own copy of the store (in `~/.local/share/rehome/firmware/`). |
+| `nbdkit` cannot be installed ("target not found" on Arch) | Nothing to do: nbdkit is only in the AUR, and Rehome uses its own built-in disk server when nbdkit is missing. |
+| "libguestfs' Python bindings…" although libguestfs is installed | `rehome doctor` says which case it is: bindings built for a different Python version than the installed one (the distribution must rebuild libguestfs), bindings that fail to load (the error is shown), or no bindings at all. |
 | Import or inspect fails with a libguestfs "supermin" or kernel error (Debian/Ubuntu) | libguestfs needs to read the kernel image, which Debian/Ubuntu make root-only. `rehome doctor` shows the `dpkg-statoverride` command. The install script offers to run it. |
 | Windows shows `INACCESSIBLE_BOOT_DEVICE` (0x7B) | Open **Settings → Disk controller** and choose the controller the PC had (SATA/AHCI, IDE or NVMe; the import summary shows what was detected), or re-run the fixes with `rehome patch run VM`. |
 | Windows asks to be activated again | Expected: the virtual hardware differs from the PC. Reactivate with your own licence; Rehome never bypasses activation. |

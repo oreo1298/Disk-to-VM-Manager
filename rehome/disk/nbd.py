@@ -1,9 +1,10 @@
-"""Serve a read-only file descriptor over NBD with nbdkit.
+"""Serve a read-only file descriptor over NBD.
 
 Offline tools (libguestfs, qemu-img, virt-v2v) need a *path* for a physical
 disk, but only the helper can open it. nbdkit's file plugin takes the fd
 (``file fd=N``) and exports it read-only on a per-user Unix socket, which is
-also what linked-import overlays name as their backing file.
+also what linked-import overlays name as their backing file. Where nbdkit is
+not packaged (Arch), Rehome's own small server (``nbdserve.py``) does the same.
 """
 
 from __future__ import annotations
@@ -12,6 +13,7 @@ import hashlib
 import os
 import signal
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -39,25 +41,29 @@ class NbdServer:
         self.proc: subprocess.Popen | None = None
 
     def start(self) -> "NbdServer":
-        nbdkit = which("nbdkit")
-        if not nbdkit:
-            raise RehomeError("nbdkit is not installed, so the physical disk cannot be read by "
-                              "the inspection tools.", fix="Install nbdkit (run `rehome doctor`).")
         Path(self.sock).unlink(missing_ok=True)
         os.set_inheritable(self.fd, True)
-        argv = [nbdkit, "--foreground", "--readonly", "--exit-with-parent",
-                "--unix", self.sock, "file", f"fd={self.fd}"]
+        nbdkit = None if os.environ.get("REHOME_NO_NBDKIT") == "1" else which("nbdkit")
+        if nbdkit:
+            name = "nbdkit"
+            argv = [nbdkit, "--foreground", "--readonly", "--exit-with-parent",
+                    "--unix", self.sock, "file", f"fd={self.fd}"]
+        else:
+            name = "Rehome's disk server"
+            argv = [sys.executable, "-I", str(Path(__file__).with_name("nbdserve.py")),
+                    "--fd", str(self.fd), "--socket", self.sock]
         self.proc = subprocess.Popen(argv, pass_fds=[self.fd], stdin=subprocess.DEVNULL,
                                      stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
         deadline = time.monotonic() + 15
         while not os.path.exists(self.sock):
             if self.proc.poll() is not None:
                 err = self.proc.stderr.read().decode(errors="replace") if self.proc.stderr else ""
-                raise RehomeError("nbdkit could not serve the disk.", details=err,
-                                  fix="nbdkit 1.34 or newer is required (for the fd= option).")
+                raise RehomeError(f"{name} could not serve the disk.", details=err,
+                                  fix="nbdkit 1.34 or newer is required (for the fd= option)."
+                                  if nbdkit else "")
             if time.monotonic() > deadline:
                 self.stop()
-                raise RehomeError("nbdkit did not start in time.")
+                raise RehomeError(f"{name} did not start in time.")
             time.sleep(0.05)
         return self
 

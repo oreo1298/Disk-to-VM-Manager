@@ -86,22 +86,25 @@ check "rehome --version as tester" test "$(as_tester 'rehome --version')" = "reh
 check "rehome doctor --quick ran" contains "$out" "Rehome host check"
 check "summary tells the user to log out for the kvm group" contains "$out" "Log out and back in"
 
-section "interactive dry run through a pseudo-terminal (optional components 1 and 5)"
-dry="$(printf '1 5\n' | su - tester -c 'cd ~/rehome && NO_COLOR=1 script -qec "./install.sh --dry-run" /dev/null' 2>&1)"
+section "interactive dry run through a pseudo-terminal (optional components qemu-aarch64 and passt)"
+# Menu numbers follow data/packages.toml: look them up instead of hard-coding them.
+picks="$(python3 /src/packaging/layout.py deps --family debian --optional --format tsv |
+    awk -F'\t' '$4 != "" { n++ } $1 == "qemu-aarch64" || $1 == "passt" { printf "%d ", n }')"
+dry="$(printf '%s\n' "$picks" | su - tester -c 'cd ~/rehome && NO_COLOR=1 script -qec "./install.sh --dry-run" /dev/null' 2>&1)"
 printf '%s\n' "$dry"
 check "asked which optional components to install" contains "$dry" "Install which? [a]ll, [n]one"
 check "installs exactly the chosen ones (qemu-system-arm, passt)" contains "$dry" "\$ sudo apt-get install -y qemu-system-arm passt"
 check "required packages already present" contains "$dry" "Already installed:"
 
-section "update to 0.1.1 (one profile removed, one added)"
-as_tester 'cp -a ~/rehome ~/rehome-next && sed -i "s/^__version__ = .*/__version__ = \"0.1.1\"/" ~/rehome-next/rehome/__init__.py && echo "# new" > ~/rehome-next/data/profiles/zz-test.toml && rm ~/rehome-next/data/profiles/generic.toml'
+section "update to $V2 (one profile removed, one added)"
+as_tester "cp -a ~/rehome ~/rehome-next && sed -i 's/^__version__ = .*/__version__ = \"$V2\"/' ~/rehome-next/rehome/__init__.py && echo '# new' > ~/rehome-next/data/profiles/zz-test.toml && rm ~/rehome-next/data/profiles/generic.toml"
 : >/work/sudo.log
 as_tester 'cd ~/rehome && REHOME_SOURCE=~/rehome-next ./install.sh --update --yes' >/work/update.log 2>&1
 rc=$?
 cat /work/update.log
 check "update exit 0" test "$rc" -eq 0
-check "manifest version 0.1.1" test "$(mjson 'd["version"]')" = 0.1.1
-check "rehome --version 0.1.1" test "$(as_tester 'rehome --version')" = "rehome 0.1.1"
+check "manifest version $V2" test "$(mjson 'd["version"]')" = "$V2"
+check "rehome --version $V2" test "$(as_tester 'rehome --version')" = "rehome $V2"
 check "new profile installed" test -f /usr/local/share/rehome/profiles/zz-test.toml
 check "removed profile pruned" test ! -e /usr/local/share/rehome/profiles/generic.toml
 check "packages record kept" test "$(mjson 'len(d["packages"]["installed"])')" = "${#added[@]}"
@@ -110,10 +113,10 @@ missing=0
 while IFS= read -r line; do grep -qxF -- "    \$ sudo $line" /work/update.log || missing=$((missing + 1)); done </work/sudo.log
 check "update: every sudo command printed first" test "$missing" -eq 0
 out="$(as_tester 'cd ~/rehome && REHOME_SOURCE=~/rehome-next ./install.sh --update --yes' 2>&1)"
-check "second update says already up to date" contains "$out" "Rehome 0.1.1 is already up to date."
+check "second update says already up to date" contains "$out" "Rehome $V2 is already up to date."
 out="$(as_tester 'cd ~/rehome && ./install.sh --update --yes' 2>&1)"
 rc=$?
-check "update to an older source is refused" bash -c "test $rc -ne 0 && grep -q 'older than the installed 0.1.1' <<<\"\$1\"" _ "$out"
+check "update to an older source is refused" bash -c "test $rc -ne 0 && grep -q 'older than the installed $V2' <<<\"\$1\"" _ "$out"
 
 section "uninstall (installed copy of install.sh, as tester)"
 mapfile -t files < <(mjson '"\n".join(d["files"])')

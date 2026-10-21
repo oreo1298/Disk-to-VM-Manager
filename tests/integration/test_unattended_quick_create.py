@@ -112,6 +112,11 @@ def test_cli_create_unattended_windows(tmp_path, capsys):
     assert "<Name>bob</Name>" in xml and "Secret-1" in xml and "Eastern Standard Time" in xml
     assert any("Press any key" in n for n in out["notes"])
     assert unattended.read_state(cfg)["press_boot_key"]
+    # After the installation: remove the answer files (they hold the password).
+    assert main(["unattended-cleanup", cfg.short_id]) == 0
+    cfg = library.reload(cfg)
+    assert not (cfg.dir / "unattended").exists()
+    assert all(cd.file != unattended.ANSWER_ISO for cd in cfg.cdroms)
 
 
 def test_cli_rejects_unsupported_unattended_without_leaving_a_vm(tmp_path, capsys):

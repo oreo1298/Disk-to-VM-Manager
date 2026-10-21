@@ -11,7 +11,6 @@ import json
 import os
 import threading
 import time
-from pathlib import Path
 
 import pytest
 
@@ -164,6 +163,15 @@ def test_resume_uses_range(server, dest):
     assert p.read_bytes() == DATA
     req = server.requests[-1]
     assert req["range"] == "bytes=1000000-" and req["if-range"] == ETAG
+
+
+def test_resume_of_a_complete_part_file(server, dest):
+    # Interrupted after the last byte but before the rename: the server answers 416.
+    (dest / "file.iso.part").write_bytes(DATA)
+    (dest / "file.iso.part.json").write_text(json.dumps(
+        {"url": server.url + "/file.iso", "etag": ETAG, "total": len(DATA)}))
+    p = download.download(server.url + "/file.iso", dest_dir=dest, checksum=sha())
+    assert p.read_bytes() == DATA and server.requests[-1]["range"] == f"bytes={len(DATA)}-"
 
 
 def test_resume_restarts_when_the_file_changed(server, dest):

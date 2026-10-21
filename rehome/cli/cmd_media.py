@@ -36,6 +36,14 @@ def register(sub) -> None:
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_download)
 
+    p = sub.add_parser("unattended-cleanup",
+                       help="Remove the answer disc and files of a finished unattended install",
+                       description="The generated answer files contain the account password. "
+                                   "Once the installation has finished, this removes them and "
+                                   "the extra CD drive from the VM.")
+    p.add_argument("vm")
+    p.set_defaults(func=cmd_unattended_cleanup)
+
 
 # --- shared with `rehome create` -----------------------------------------------------------
 
@@ -187,7 +195,7 @@ def cmd_quick_create(args) -> int:
             print(f"{bold(entry.name)} is not downloaded by Rehome. Get it from Microsoft:")
             print(f"  {result.external_url}")
             print("Then create the VM from the ISO, for example:")
-            print(f"  rehome create --iso ~/Downloads/<file>.iso"
+            print("  rehome create --iso ~/Downloads/<file>.iso"
                   + (" --unattended --user NAME --start" if entry.unattended else ""))
         return 0
     cfg = result.config
@@ -223,6 +231,18 @@ def _list(args) -> int:
         rows.append([e.id, e.name, source, "yes" if e.unattended else "-", e.size])
     print(table(rows, ["ID", "Name", "Source", "Unattended", "Size"]))
     print(dim("\nrehome quick-create ID [--unattended --user NAME] [--start]"))
+    return 0
+
+
+def cmd_unattended_cleanup(args) -> int:
+    from rehome.media import unattended
+    from rehome.vm import library
+    cfg = library.find(args.vm)
+    if not unattended.pending(cfg):
+        print(f"{cfg.name} has no unattended-installation files.")
+        return 0
+    unattended.cleanup(cfg)
+    print(f"Removed the answer disc and files from {bold(cfg.name)}.")
     return 0
 
 

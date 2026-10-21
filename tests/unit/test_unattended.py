@@ -5,11 +5,7 @@ volume IDs and file layout of each installer, so libosinfo identification,
 boot-menu parsing and kernel extraction run for real.
 """
 
-import gzip
-import hashlib
-import json
 import logging
-import os
 import re
 import stat
 import subprocess
@@ -354,6 +350,12 @@ def test_fedora_workstation_live_is_refused(tmp_path, isos):
     assert ei.value.code == "unattended-unsupported"
     assert not (cfg.dir / u.ANSWER_DIR).exists()
     assert len(library.reload(cfg).cdroms) == 1
+
+
+def test_linux_direct_boot_needs_secure_boot_off(tmp_path, isos):
+    cfg = make_vm(tmp_path, isos, "ubuntu24.04-server", firmware="uefi-secure")
+    s = u.check(cfg)
+    assert not s.ok and "Secure Boot" in s.reason and "without Secure Boot" in s.fix
 
 
 def test_kickstart_rejects_quotes_in_password(tmp_path, isos):

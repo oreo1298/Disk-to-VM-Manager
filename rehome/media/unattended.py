@@ -566,6 +566,13 @@ def plan(cfg: VMConfig) -> _Plan:
         return _Plan("windows", iso, cd.id, os_name=os_name, languages=langs, volume_id=vol)
     if fam != "linux":
         raise _unsupported(f"Rehome cannot install {os_name} automatically.")
+    if cfg.machine.firmware == "uefi-secure":
+        # Linux installs start the installer's kernel directly (-kernel); OVMF
+        # with Secure Boot refuses kernels that are not signed by Microsoft.
+        raise _unsupported(
+            f"Automatic installation of {os_name} starts the installer's kernel directly, "
+            "which Secure Boot does not allow.",
+            fix="Choose UEFI without Secure Boot for this VM (or install by hand).")
     files = iso_files(iso)
     vol = iso_volume_id(iso)
     if _is_subiquity(files, vol):
@@ -1097,7 +1104,8 @@ def _build_osinfo(cfg: VMConfig, p: _Plan, a: Answers, work: Path):
             cmdline = script.generate_command_line(p.os_obj, c) or ""
     except Exception as e:     # GLib.Error; never include the config (it has the password)
         raise RehomeError("libosinfo could not generate the install script.",
-                          details=f"{script.get_id()}: {getattr(e, 'message', type(e).__name__)}")
+                          details=f"{script.get_id()}: {getattr(e, 'message', type(e).__name__)}"
+                          ) from None
     for rx, repl in spec.get("poweroff", []):
         text = re.sub(rx, repl, text)
     text += spec.get("append", "")
@@ -1234,6 +1242,9 @@ def prepare(cfg: VMConfig, answers: Answers) -> list[str]:
         shutil.rmtree(work, ignore_errors=True)
         raise
     log.info("prepared unattended install of %s (%s)", cfg.name, p.method)
+    secret = "a hash of your password" if p.method == "subiquity" else "your password"
+    notes.append(f"The answer files contain {secret} and are readable only by you. After the "
+                 f"installation, remove them with: rehome unattended-cleanup \"{cfg.name}\"")
     return notes
 
 

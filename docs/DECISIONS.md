@@ -549,9 +549,14 @@ without root.
 
 ## D27. Running the VM full screen
 
-- `cage` (a Wayland kiosk compositor) shows exactly one application; QEMU's
-  GTK display runs in it full screen, scaled to the screen, without menus.
-  If cage cannot use the GPU, it is restarted with software rendering.
+- `cage` (a Wayland kiosk compositor) shows exactly one application: QEMU's
+  SDL display, full screen and scaled to the screen. SDL rather than GTK:
+  it has no menus and no hotkey that quits QEMU (GTK has Ctrl+Alt+Q), and
+  GTK on Ubuntu 26.04 loads icons through glycin's sandboxed loaders, which
+  failed in testing and make GTK abort. SDL runs without libdecor (its
+  fallback never shows the window). Without a GPU render node, or with
+  basic graphics, cage uses its CPU renderer (pixman); if cage still cannot
+  start, it is retried with pixman.
 - The VM runs as an unprivileged `rehome` user with a logind seat (the
   kiosk service uses `PAMName=login` on tty1), in the `kvm`, `audio`,
   `video`, `render` and `input` groups. A udev rule gives that user the USB

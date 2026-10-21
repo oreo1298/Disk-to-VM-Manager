@@ -182,11 +182,11 @@ def test_kiosk_console_kind_in_qemu_command(tmp_path):
     cfg.path = tmp_path / "vm"
     cfg.path.mkdir()
     cfg.display.console = "kiosk"
-    gtk = argv_of(cfg, tmp_path, caps(displays={"gtk", "sdl", "none"})).argv
+    sdl = argv_of(cfg, tmp_path, caps(displays={"gtk", "sdl", "none"})).argv
+    assert values(sdl, "-display") == ["sdl,window-close=off"] and "-full-screen" in sdl
+    gtk = argv_of(cfg, tmp_path, caps(displays={"gtk", "none"})).argv
     assert values(gtk, "-display") == [("gtk,full-screen=on,zoom-to-fit=on,show-menubar=off,"
                                         "show-tabs=off,window-close=off")]
-    sdl = argv_of(cfg, tmp_path, caps(displays={"sdl", "none"})).argv
-    assert values(sdl, "-display") == ["sdl,window-close=off"] and "-full-screen" in sdl
 
 
 def test_what_happens_when_the_vm_stops():
@@ -197,3 +197,23 @@ def test_what_happens_when_the_vm_stops():
     assert "Ctrl+Alt+Q" in runtime.outcome_for("host-ui")["message"]
     crash = runtime.outcome_for("")
     assert crash["outcome"] == "error" and crash["reason"] == "crash" and "message" not in crash
+
+
+def test_units_call_existing_commands():
+    import configparser
+    import re as _re
+
+    from rehome import paths
+    from rehome.cli import cmd_appliance
+    units = sorted((paths.data_files_dir() / "appliance/rootfs/etc/systemd/system").glob("*.service"))
+    assert {u.name for u in units} >= {"rehome-boot.service", "rehome-kiosk.service",
+                                       "rehome-maintenance.service", "rehome-firstboot.service"}
+    for u in units:
+        cp = configparser.ConfigParser(strict=False, interpolation=None)
+        cp.read_string(u.read_text())
+        for key, value in cp["Service"].items():
+            if key.startswith("exec"):
+                for cmd in _re.findall(r"rehome appliance ([\w-]+)", value):
+                    assert cmd in cmd_appliance.INSIDE, f"{u.name}: {value}"
+    wrapper = paths.data_files_dir() / "appliance/rootfs/usr/local/bin/rehome"
+    assert wrapper.read_text().startswith("#!/bin/sh")

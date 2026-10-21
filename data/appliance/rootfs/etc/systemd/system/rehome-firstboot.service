@@ -3,6 +3,7 @@
 [Unit]
 Description=Rehome appliance: first boot
 After=local-fs.target
+RequiresMountsFor=/var/lib/rehome
 Before=rehome-boot.service rehome-kiosk.service rehome-maintenance.service
 ConditionPathExists=!/var/lib/rehome/appliance/firstboot.done
 

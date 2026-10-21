@@ -2,7 +2,7 @@
 
     rehome-boot.service      boot()        picks the kiosk or the maintenance console
     rehome-firstboot.service firstboot()   grows the data partition, hardware report
-    rehome-kiosk.service     prepare() → kiosk() → after_kiosk(), plus watch_boot()
+    rehome-kiosk.service     prepare() (starts watch_boot()) → kiosk() → after_kiosk()
         kiosk() runs cage, which runs session(): the VM, the USB and power button agents
 
 The kiosk runs as the unprivileged "rehome" user; prepare/watch_boot/after_kiosk
@@ -11,6 +11,7 @@ and the others run as root (see the units in data/appliance/rootfs).
 
 from __future__ import annotations
 
+import glob
 import json
 import logging
 import os
@@ -117,18 +118,22 @@ def prepare() -> int:
     for p in (INTENT, RESULT, STARTED, LIMITS):
         p.unlink(missing_ok=True)
     subprocess.run(["chvt", "1"], check=False)
-    return 0
+    return watch_boot()
 
 
 def watch_boot() -> int:
-    """After the kiosk starts (root): once the VM is on screen, the boot counts as good.
+    """In the background (root): once the VM is on screen, the boot counts as good.
 
     Until then GRUB's ``recordfail`` stays set, so after a hang the boot menu
-    is shown on the next start.
+    is shown on the next start. The watcher keeps no terminal open: the kiosk
+    unit hangs up tty1 when its main process starts.
     """
     if os.fork():
         return 0
     os.setsid()
+    null = os.open(os.devnull, os.O_RDWR)
+    for fd in (0, 1, 2):
+        os.dup2(null, fd)
     deadline = time.monotonic() + 1800
     while time.monotonic() < deadline:
         if STARTED.exists():
@@ -248,7 +253,14 @@ def kiosk() -> int:
 
     env = dict(os.environ)
     env.pop("DISPLAY", None)
-    if basic:
+    # cage also starts Xwayland (DISPLAY=:0); QEMU's window must use Wayland directly.
+    # Without libdecor's plugins SDL's fallback waits forever for the window, and a
+    # kiosk window needs no decorations anyway.
+    env.update(SDL_VIDEODRIVER="wayland", SDL_VIDEO_WAYLAND_ALLOW_LIBDECOR="0",
+               GDK_BACKEND="wayland")
+    if basic or not glob.glob("/dev/dri/renderD*"):
+        # No GPU acceleration (basic graphics, or a display without a render node):
+        # wlroots refuses software OpenGL, so it uses its CPU renderer directly.
         env["WLR_RENDERER"] = "pixman"
     result = None
     rc = 0
@@ -285,7 +297,7 @@ def session() -> int:
         limits = _read_json(LIMITS) or {}
         cfg.machine.memory_mib = int(limits.get("memory_mib", cfg.machine.memory_mib))
         cfg.machine.cpus = int(limits.get("cpus", cfg.machine.cpus))
-        runner.start(cfg, allow_overcommit=True)
+        runner.start(cfg, allow_overcommit=True, start_timeout=600)
     except RehomeError as e:
         _write_json(RESULT, {"outcome": "error", "message": " ".join(
             x for x in (f"The VM could not be started: {e.message}", e.fix or "") if x),
@@ -454,6 +466,9 @@ def usb_reason_to_skip(dev, sysdir: Path | None, system_paths: list[str],
 def usb_agent(cfg, stop: threading.Event, interval: float = 1.0) -> None:
     """Give USB devices to the VM as they are plugged in (and those present at start)."""
     from rehome.vm import usb
+    if cfg.usb.controller == "none":
+        log.warning("%s has no USB controller; USB devices stay with the appliance", cfg.name)
+        return
     attached: dict[str, object] = {}
     tried: set[str] = set()
     system_paths = _system_drive_paths()

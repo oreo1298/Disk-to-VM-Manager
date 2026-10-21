@@ -28,7 +28,7 @@ vm = ["qemu-system-x86", "qemu-system-gui", "qemu-utils", "ovmf", "seabios", "pa
 display = ["cage", "fonts-dejavu-core"]
 sound = ["alsa-utils"]
 network = ["systemd-resolved", "iwd", "wireless-regdb", "iproute2", "iputils-ping"]
-maintenance = ["usbutils", "pciutils", "less", "nano"]
+maintenance = ["usbutils", "pciutils", "pci.ids", "usb.ids", "less", "nano"]
 
 [size]
 root_gib = 6        # the system partition; the VM lives on its own data partition

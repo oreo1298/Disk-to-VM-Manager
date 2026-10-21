@@ -34,6 +34,8 @@ if freedos.available() or not shutil.which("qemu-system-x86_64"):
                 allow_module_level=True)
 
 PASSWORD = "rehome-test"
+# Terminal escapes: OSC (systemd's shell context markers, titles) and CSI sequences.
+ESCAPES = re.compile(r"\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b\[[0-9;?]*[A-Za-z]")
 KVM = os.access("/dev/kvm", os.R_OK | os.W_OK)
 SLOW = 1 if KVM else 6              # timeouts scale without KVM
 
@@ -66,12 +68,12 @@ class Serial:
         except (TimeoutError, socket.timeout):
             return
         if data:
-            self.buf += data.decode(errors="replace")
+            self.buf = ESCAPES.sub("", self.buf + data.decode(errors="replace"))
 
     def expect(self, pattern: str, timeout: float) -> re.Match:
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
-            m = re.search(pattern, self.buf)
+            m = re.search(pattern, self.buf, re.S | re.M)
             if m:
                 self.buf = self.buf[m.end():]
                 return m
@@ -119,7 +121,9 @@ class Computer:
             subprocess.run(["qemu-img", "create", "-f", "raw", str(stick), "64M"], check=True,
                            capture_output=True)
         argv = ["qemu-system-x86_64", "-machine", "q35", "-m", "3072", "-smp", "2",
-                "-accel", "kvm" if KVM else "tcg", "-cpu", "host" if KVM else "max",
+                "-accel", "kvm" if KVM else "tcg",
+                # Emulated CPUs advertise VMX/SVM that cannot actually run nested guests.
+                "-cpu", "host" if KVM else "max,-vmx,-svm",
                 "-device", "ahci,id=ahci",
                 "-drive", f"if=none,id=appl,file={image},format=qcow2",
                 "-device", "ide-hd,drive=appl,bus=ahci.0,bootindex=1",
@@ -148,6 +152,14 @@ class Computer:
         with QMP(str(self.qmp_sock)).connect(retries=10) as q:
             return q.execute(cmd, args or {})
 
+    def type(self, text: str) -> None:
+        """Type on the computer's keyboard."""
+        from rehome.vm.runner import _char_to_qcodes
+        for ch in text:
+            keys = [{"type": "qcode", "data": k} for k in _char_to_qcodes(ch)]
+            self.qmp("send-key", {"keys": keys, "hold-time": 60})
+            time.sleep(0.15)
+
     def screen_text(self, name: str) -> str:
         from tests.boot.watch import ocr
         png = self.work / f"{name}.png"
@@ -172,7 +184,7 @@ def _ovmf() -> tuple[str, str]:
 @pytest.fixture(scope="module")
 def appliance(tmp_path_factory):
     from rehome.appliance import build
-    from rehome.vm import create, disks
+    from rehome.vm import create, disks, library
     work = tmp_path_factory.mktemp("appliance")
     img = work / "freedos.img"
     freedos.build(img)
@@ -180,6 +192,8 @@ def appliance(tmp_path_factory):
     disks.convert(str(img), str(disk), src_fmt="raw")
     cfg = create.create(create.NewVMSpec(name="FreeDOS Appliance", os="freedos1.3",
                                          existing_disk=str(disk), network="none"))
+    cfg.usb.controller = "piix3-usb-uhci"       # the DOS profile has none; USB is tested here
+    library.save(cfg)
     out = work / "appliance.qcow2"
     build.build(cfg, build.Options(output=out, fmt="qcow2", maintenance_password=PASSWORD,
                                    kernel_args="console=tty1 console=ttyS0,115200"))
@@ -292,10 +306,24 @@ def test_boots_on_bios_and_runs_the_vm(appliance, tmp_path):
             time.sleep(5)
         _, kiosk = sh.run("systemctl is-active rehome-kiosk")
         assert kiosk.strip() != "active"
-        time.sleep(5)
+        # This build has a maintenance password: log in on the screen like a person.
+        time.sleep(10 * SLOW)
+        pc.type("root\n")
+        time.sleep(5 * SLOW)
+        pc.type(PASSWORD + "\n")
+        time.sleep(15 * SLOW)
         text = pc.screen_text("bios-maintenance")
         if shutil.which("tesseract"):
-            assert "maintenance" in text.lower(), text
+            assert "maintenance console" in text.lower() and "start the vm" in text.lower(), text
+        # Start the VM from the menu.
+        pc.type("1\n")
+        deadline = time.monotonic() + 600 * SLOW
+        while True:
+            rc, _ = sh.run("test -e /run/rehome/vm-started")
+            if rc == 0:
+                break
+            assert time.monotonic() < deadline
+            time.sleep(10)
     finally:
         pc.stop()
 

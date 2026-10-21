@@ -96,10 +96,12 @@ class ApplianceDialog(Adw.Window):
         except RehomeError as e:
             self.blocker = e
             notes.insert(0, e.message + (f" {e.fix}" if e.fix else ""))
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         for n in notes:
             lbl = Gtk.Label(label=n, wrap=True, xalign=0)
             lbl.add_css_class("dim-label")
-            info.add(lbl)
+            box.append(lbl)
+        info.add(box)
         pref.add(info)
 
         self.build_btn = Gtk.Button(label="Build")

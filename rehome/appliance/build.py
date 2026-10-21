@@ -183,7 +183,7 @@ def fstab(root_uuid: str, esp_uuid: str, data_uuid: str) -> str:
     return ("# Rehome appliance\n"
             f"UUID={root_uuid}  /                ext4  defaults,errors=remount-ro  0 1\n"
             f"UUID={esp_uuid}  /boot/efi        vfat  umask=0077,nofail  0 2\n"
-            f"UUID={data_uuid}  {HOME}  ext4  defaults,nofail,x-systemd.device-timeout=15s  0 2\n")
+            f"UUID={data_uuid}  {HOME}  ext4  defaults,nofail  0 2\n")
 
 
 def appliance_config(cfg: VMConfig, opts: Options, base: base_mod.Base) -> dict:
@@ -389,6 +389,9 @@ chmod 0750 /var/lib/rehome
 systemctl enable rehome-boot.service rehome-firstboot.service
 systemctl enable systemd-networkd.service systemd-resolved.service iwd.service
 systemctl mask systemd-networkd-wait-online.service
+# Ubuntu clears GRUB's boot-failure flags once Linux is up; the appliance
+# clears recordfail itself, once the VM is on screen.
+systemctl mask grub2-common.service grub-initrd-fallback.service
 systemctl disable getty@tty1.service 2>/dev/null || true
 rm -f /etc/systemd/system/getty.target.wants/getty@tty1.service
 systemctl set-default multi-user.target

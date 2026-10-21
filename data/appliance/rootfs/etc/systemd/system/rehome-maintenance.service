@@ -2,6 +2,7 @@
 [Unit]
 Description=Rehome appliance: maintenance console
 After=systemd-user-sessions.service rehome-firstboot.service
+WantsMountsFor=/var/lib/rehome
 Conflicts=getty@tty1.service rehome-kiosk.service
 
 [Service]

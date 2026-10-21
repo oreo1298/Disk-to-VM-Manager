@@ -4,6 +4,7 @@
 [Unit]
 Description=Rehome appliance: the VM, full screen
 After=systemd-user-sessions.service systemd-logind.service rehome-firstboot.service
+RequiresMountsFor=/var/lib/rehome
 Conflicts=getty@tty1.service rehome-maintenance.service
 StartLimitIntervalSec=0
 
@@ -20,9 +21,10 @@ StandardError=journal
 UtmpIdentifier=tty1
 UtmpMode=user
 LimitMEMLOCK=infinity
-# "+": these steps run as root (preparing, clearing the boot-failure flag,
-# and powering off or opening the maintenance console afterwards).
+# "+": these steps run as root (preparing, which also starts the watcher that
+# clears the boot-failure flag once the VM is on screen; and afterwards,
+# powering off or opening the maintenance console). No ExecStartPost: with
+# TTYVHangup every command hangs up tty1, which would kill the running kiosk.
 ExecStartPre=+/usr/local/bin/rehome appliance prepare
 ExecStart=/usr/local/bin/rehome appliance kiosk
-ExecStartPost=+/usr/local/bin/rehome appliance watch-boot
 ExecStopPost=+/usr/local/bin/rehome appliance after-kiosk

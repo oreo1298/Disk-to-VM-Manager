@@ -204,9 +204,18 @@ def _audio_backend(cfg: VMConfig, caps) -> str:
         return "pipewire"
     if "pa" in caps.audiodevs and xdg and os.path.exists(os.path.join(xdg, "pulse", "native")):
         return "pa"
-    if "alsa" in caps.audiodevs and os.path.exists("/dev/snd"):
+    if "alsa" in caps.audiodevs and _has_sound_card():
         return "alsa"
     return "none"
+
+
+def _has_sound_card() -> bool:
+    """ALSA has a card (``/dev/snd`` alone may only hold the timer and sequencer)."""
+    try:
+        text = Path("/proc/asound/cards").read_text()
+    except OSError:
+        return False
+    return bool(text.strip()) and "no soundcards" not in text
 
 
 def running_vms_memory(exclude: str = "") -> int:
@@ -244,7 +253,7 @@ def check_resources(cfg: VMConfig, host, allow_overcommit: bool = False) -> None
 def start(cfg: VMConfig, *, headless: bool = False, paused: bool = False,
           restore: bool = True, loadvm: str = "", allow_overcommit: bool = False,
           extra_args: list[str] | None = None, accel: str | None = None,
-          fd_provider=None) -> VMState:
+          fd_provider=None, start_timeout: float = 60.0) -> VMState:
     """Start a VM and return once QEMU is up and answering QMP."""
     if is_running(cfg):
         raise RehomeError(f"\"{cfg.name}\" is already running.", code="already-running")
@@ -339,7 +348,7 @@ def start(cfg: VMConfig, *, headless: bool = False, paused: bool = False,
                     "-p", f"CPUQuota={cfg.machine.cpu_quota_pct}%", "--"] + argv
         proc = _launch(cfg, argv, pass_fds, log_dir / "qemu.log", choice, plan.warnings)
         started_at = time.time()
-        _wait_ready(cfg, proc, rt, log_dir / "qemu.log")
+        _wait_ready(cfg, proc, rt, log_dir / "qemu.log", timeout=start_timeout)
         if opts.incoming:
             _restore(cfg, saved)
     except BaseException:
@@ -445,7 +454,7 @@ def explain_qemu_failure(log_text: str) -> tuple[str, str]:
     if "permission denied" in t:
         return ("QEMU was not allowed to open a file or device.",
                 "Check the permissions of the VM's disk files and the technical details.")
-    if "could not open" in t and "no such file" in t:
+    if any("could not open" in ln and "no such file" in ln for ln in t.splitlines()):
         return ("A file the VM needs is missing.", "See the technical details for the path.")
     if "cannot allocate memory" in t or "out of memory" in t:
         return ("There is not enough free memory to start the VM.",

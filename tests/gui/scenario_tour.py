@@ -23,7 +23,14 @@ def steps(ctx, snap, find, find_all):
                 ctx.win.pages[vm_id].stack.set_visible_child_name(t)
         yield 0, show
         yield 1000, (lambda t=tab: snap(ctx.win, "03-vm-" + t))
-    yield 0, lambda: ctx.app.activate_action("new-vm", None)
+    def appliance():
+        vm_id = ctx.win.selected_id()
+        if vm_id:
+            ctx.win.pages[vm_id].activate_action("vm.appliance", None)
+    yield 0, appliance
+    yield 1500, lambda: top("ApplianceDialog") and snap(top("ApplianceDialog"), "04-appliance")
+    yield 0, lambda: top("ApplianceDialog") and top("ApplianceDialog").close()
+    yield 300, lambda: ctx.app.activate_action("new-vm", None)
     yield 1200, lambda: snap(top("NewVmWizard"), "10-new-vm")
     yield 0, lambda: top("NewVmWizard").src_catalog.set_active(True)
     yield 800, lambda: snap(top("NewVmWizard"), "11-quick-create")

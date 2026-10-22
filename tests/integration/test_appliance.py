@@ -393,7 +393,8 @@ def test_boots_on_bios_and_runs_the_vm(appliance, tmp_path):
                 break
             assert time.monotonic() < deadline, usb
             time.sleep(5)
-        sh.run("pkill -ABRT -x qemu-system-x86_64 || pkill -ABRT -x qemu-system-x86")
+        rc, _ = sh.run("pkill -ABRT -f '^/usr/bin/qemu-system'")   # named after the VM
+        assert rc == 0
         deadline = time.monotonic() + 180 * SLOW
         while True:
             _, st = sh.run("systemctl is-active rehome-maintenance")

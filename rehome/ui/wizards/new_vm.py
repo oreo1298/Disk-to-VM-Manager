@@ -208,12 +208,21 @@ class NewVmWizard(Adw.Window):
         self.mem.set_title("Memory (MiB)")
         self.mem.set_value(cfg.machine.memory_mib)
         self.disk = Adw.EntryRow(title="Disk size", text=human(plan.disk_size).replace(".0 ", " ").replace("iB", ""))
+        from rehome.ui.disk_location import DiskLocationRow
+        self.disk_loc = DiskLocationRow(need=plan.disk_size)
+
+        def size_changed(*_):
+            try:
+                self.disk_loc.set_need(parse_size(self.disk.get_text(), "g"))
+            except ValueError:
+                pass
+        self.disk.connect("changed", size_changed)
         self.fw = combo_row("Firmware", ["BIOS", "UEFI", "UEFI with Secure Boot"],
                             ["bios", "uefi", "uefi-secure"], cfg.machine.firmware)
         self.tpm = combo_row("TPM", ["None", "TPM 2.0"], ["none", "2.0"], cfg.machine.tpm)
         self.net = combo_row("Network", ["NAT (share this computer's connection)", "Not connected"],
                              ["nat", "none"], "nat")
-        for r in (self.name_row, self.cpus, self.mem, self.disk, self.fw, self.tpm, self.net):
+        for r in (self.name_row, self.cpus, self.mem, self.disk, self.disk_loc, self.fw, self.tpm, self.net):
             g.add(r)
         pref.add(g)
         for n in plan.notes:
@@ -278,6 +287,7 @@ class NewVmWizard(Adw.Window):
         spec.firmware = combo_value(self.fw)
         spec.tpm = combo_value(self.tpm)
         spec.network = combo_value(self.net)
+        spec.disk_dir = self.disk_loc.folder
         answers = self._answers()
         panel = ProgressPanel("Creating the VM")
         prog = panel.bind(jobs.Progress(title="Creating"))
@@ -297,7 +307,7 @@ class NewVmWizard(Adw.Window):
                                            status=prog.note,
                                            spec_overrides={k: getattr(spec, k) for k in
                                                            ("cpus", "memory_mib", "disk_size", "firmware",
-                                                            "tpm", "network")})
+                                                            "tpm", "network", "disk_dir")})
                 return res.config, res.notes
             from rehome.vm import create
             prog.stage("Creating the disk")

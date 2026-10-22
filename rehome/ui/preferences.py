@@ -110,5 +110,39 @@ class PreferencesWindow(Adw.PreferencesWindow):
             Gio.File.new_for_path(str(paths.vms_dir()))).launch(self, None, None))
         r.add_suffix(open_btn)
         g.add(r)
+        g.add(self._disk_folder_row())
         page.add(g)
         self.add(page)
+
+    def _disk_folder_row(self) -> Adw.ActionRow:
+        """Default folder for new disk images (e.g. a larger second drive)."""
+        from rehome.ui.common import show_error
+        from rehome.ui.disk_location import choose_folder
+        from rehome.vm import storage
+        row = Adw.ActionRow(title="Folder for new disks")
+        reset = Gtk.Button(icon_name="edit-undo-symbolic", valign=Gtk.Align.CENTER,
+                           tooltip_text="Store new disks in each VM's folder")
+        reset.add_css_class("flat")
+        change = Gtk.Button(label="Change…", valign=Gtk.Align.CENTER)
+
+        def show():
+            folder = storage.default_disk_dir()
+            row.set_subtitle(GLib.markup_escape_text(
+                storage.describe(folder) if folder else
+                "In each VM's folder, in the VM library. Choose a folder on a larger drive to keep "
+                "new disks off this one."))
+            reset.set_visible(folder is not None)
+
+        def chosen(path):
+            try:
+                storage.set_default_disk_dir(path)
+            except Exception as e:  # noqa: BLE001
+                show_error(self, e)
+            show()
+        reset.connect("clicked", lambda *_: (storage.set_default_disk_dir(None), show()))
+        change.connect("clicked", lambda *_: choose_folder(
+            row, "Folder for new disk images", storage.default_disk_dir(), chosen))
+        row.add_suffix(reset)
+        row.add_suffix(change)
+        show()
+        return row

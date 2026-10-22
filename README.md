@@ -16,7 +16,7 @@ Rehome is a Linux desktop app for QEMU/KVM. It does two jobs:
 
 Everything the GUI does is also available on the command line (`rehome --help`).
 
-> **Status: 0.2.1, early release.** The engine, CLI and GUI work, and they are
+> **Status: 0.3.0, early release.** The engine, CLI and GUI work, and they are
 > tested on synthetic disks and on real FreeDOS, ReactOS and Ubuntu guests. Real
 > Windows and 9x installations were not tested yet; see
 > [What has been tested](#what-has-been-tested).
@@ -153,7 +153,8 @@ rehome import laptop.vhdx --mode copy --verify --start
   - **Linked** (the default) is instant: the VM reads unchanged data from the
     original disk, so that disk must stay attached.
   - **Copy** makes a standalone image, so the disk can be removed afterwards.
-    A linked VM can be made standalone later (**Summary → Make Standalone**).
+    You choose the folder it is stored in. A linked VM can be made
+    standalone later (**Summary → Make Standalone**).
 - **Unsafe sources are refused.** Rehome will not import:
   - the disk your running Linux is on,
   - a disk with mounted partitions or active swap,
@@ -224,7 +225,9 @@ Click **+ → New Virtual Machine…** or run `rehome create`.
 - **From an ISO.** Rehome identifies the system on the disc (via libosinfo,
   or from the installer's own files for releases and derivatives libosinfo
   does not know) and suggests the CPUs, memory, disk size, firmware and
-  TPM. You can change the detected system on the hardware page.
+  TPM. You can change the detected system on the hardware page, and choose
+  where the disk image is stored (**Disk location**), for example on a
+  larger second drive.
 - **Quick Create.** Downloads a free system from its official site and
   verifies the download:
   - Ubuntu Desktop and Server LTS, Fedora Workstation and Server, Debian,
@@ -243,7 +246,9 @@ Click **+ → New Virtual Machine…** or run `rehome create`.
     your password, from the Summary tab.
 - **Advanced settings** (in the VM's **Settings** tab, or `rehome set`):
   - CPUs, memory, CPU model and acceleration,
-  - disks, CD drives and floppy,
+  - disks: add a new disk or an existing image file, **Replace…** a disk
+    with another image or a new empty one (same bus and boot position),
+    enlarge or remove one; CD drives and floppy,
   - BIOS, UEFI or Secure Boot, and the TPM,
   - NAT or bridged networking,
   - shared folders (virtiofs),
@@ -253,6 +258,8 @@ Click **+ → New Virtual Machine…** or run `rehome create`.
 rehome create --iso ~/Downloads/Win11_24H2.iso --unattended --user me
 rehome quick-create ubuntu-desktop-lts --start         # `rehome quick-create --list` shows all
 rehome create --os freedos1.3 --name DOS --memory 32M --disk 500M
+rehome create --iso omarchy.iso --disk 128G --disk-dir /mnt/big/vm-disks
+rehome disk replace "Old PC" disk0 --image ~/backup/old-pc.qcow2
 ```
 
 ## Managing VMs
@@ -273,13 +280,19 @@ rehome create --os freedos1.3 --name DOS --memory 32M --disk 500M
   its memory. You can revert to, start from or delete any checkpoint.
 - **Clone, Export / Import**: `.rehome` files contain the VM and its disks.
   **Delete** can keep the disk files.
+- **Where disks are stored**: in the VM's folder by default. Set **Folder
+  for new disks** in Preferences (or `rehome disk folder /mnt/big`) to put
+  new disks, copies and clones on another drive; each new disk can also get
+  its own folder. Disks Rehome created there are deleted with their VM;
+  disk images you attached yourself are never moved or deleted.
 - **Logs and diagnostics**: QEMU's log, the import and patch logs, and **Copy
   Diagnostics** for bug reports.
 - **Hooks**: scripts in `~/.config/rehome/hooks.d/` run when VMs start and
   stop. See [docs/HOOKS.md](docs/HOOKS.md).
 
 VMs live in `~/.local/share/rehome/vms/<name>-<id>/`. Each VM folder holds
-`vm.toml` (readable settings), `disks/`, `logs/` and `nvram`/`tpm` state.
+`vm.toml` (readable settings), `disks/` (unless disks are stored elsewhere),
+`logs/` and `nvram`/`tpm` state.
 QEMU runs detached, so VMs keep running when you close the window.
 
 Keyboard shortcuts: Ctrl+N new VM, Ctrl+I import, Ctrl+, preferences, Ctrl+?
@@ -322,6 +335,7 @@ rehome patch log|run|rollback VM
 rehome tools status|boot-ok|insert|paravirt VM
 rehome checkpoint list|create|revert|delete VM …
 rehome set VM --memory 8G --cpus 4 … | cd VM file.iso
+rehome disk list|add|replace|remove|standalone VM … | disk folder [DIR]
 rehome usb list|attach|detach …
 rehome clone | export | import-vm | delete VM
 rehome logs VM | diagnostics VM

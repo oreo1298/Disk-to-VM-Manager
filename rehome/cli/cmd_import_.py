@@ -19,6 +19,9 @@ def register(sub) -> None:
     p.add_argument("--mode", choices=["linked", "copy"], default="linked",
                    help="linked: fast, the source must stay attached (default). copy: standalone "
                         "image, the source can be removed afterwards")
+    p.add_argument("--disk-dir", metavar="FOLDER",
+                   help="copy mode: folder for the copied disk image, e.g. on a second drive "
+                        "(default: `rehome disk folder`, else the VM's folder)")
     p.add_argument("--verify", action="store_true",
                    help="SHA-256 the source before and after (slow; logged in logs/import.log)")
     p.add_argument("--key", action="append", default=[],
@@ -75,6 +78,12 @@ def _ask(prompt: str, default: bool = True) -> bool:
 def run(args) -> int:
     from rehome import importer
     from rehome.cli.cmd_inspect import print_analysis, progress_printer
+    if args.disk_dir is not None and args.mode != "copy":
+        raise RehomeError("--disk-dir only applies to --mode copy.",
+                          fix="A linked import keeps only a small overlay file in the VM's folder.")
+    if args.disk_dir:
+        from rehome.vm import storage
+        storage.check_folder(args.disk_dir)
     prog = progress_printer()
     a = importer.analyze(args.sources, keys=args.key, smart_check=not args.no_smart,
                          allow_failing_disk=args.allow_failing_disk, progress=prog)
@@ -88,7 +97,8 @@ def run(args) -> int:
         print()
     opts = importer.ImportOptions(name=args.name or "", mode=args.mode, verify_hash=args.verify,
                                   keys=args.key, os_index=args.os_index, overrides=ov,
-                                  patch=not args.no_patch, allow_failing_disk=args.allow_failing_disk)
+                                  patch=not args.no_patch, allow_failing_disk=args.allow_failing_disk,
+                                  disk_dir=args.disk_dir)
     o = a.os
     if o and o.hibernated and not args.no_patch:
         if args.discard_hibernation:

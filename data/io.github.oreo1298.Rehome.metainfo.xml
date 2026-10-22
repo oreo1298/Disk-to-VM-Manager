@@ -34,6 +34,11 @@
     <control>pointing</control>
   </supports>
   <releases>
+    <release version="0.3.0" date="2026-10-22">
+      <description>
+        <p>Choose where disk images are stored, for example on a second drive. Replace a VM's disk with another image or a new empty disk. Installer ISOs that libosinfo does not know (new releases, derivatives such as Omarchy) are recognised from their files, and the detected system can be changed in the New VM wizard.</p>
+      </description>
+    </release>
     <release version="0.2.1" date="2026-10-22">
       <description>
         <p>Appliances: the VM fills the screen and the pointer reaches all of it; modern guests get the screen's native resolution.</p>

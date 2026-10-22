@@ -200,7 +200,7 @@ def vm_for_appliance(cfg: VMConfig, opts: Options, media: dict[str, str]) -> VMC
     """The VM's configuration as it lives in the appliance."""
     out = VMConfig.from_dict(cfg.to_dict())
     for d in out.disks:
-        d.file, d.format = f"disks/{d.id}.qcow2", "qcow2"
+        d.file, d.format, d.owned = f"disks/{d.id}.qcow2", "qcow2", False
         if d.source:
             d.source.mode = "copy"
     for dev in list(out.cdroms) + list(out.floppies):

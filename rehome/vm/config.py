@@ -69,6 +69,7 @@ class Disk:
     discard: bool = True
     serial: str = ""
     source: DiskSource | None = None
+    owned: bool = False          # Rehome created this file outside the VM folder: delete it with the VM
 
 
 @dataclass

@@ -21,6 +21,9 @@ def register(sub) -> None:
     p.add_argument("--disk", help="new disk size, e.g. 64G (0 for no disk)")
     p.add_argument("--disk-bus", choices=["virtio", "sata", "ide", "scsi", "nvme"])
     p.add_argument("--use-disk", help="use an existing disk image instead of creating one")
+    p.add_argument("--disk-dir", metavar="FOLDER",
+                   help="folder for the new disk image, e.g. on a second drive (default: "
+                        "`rehome disk folder`, else the VM's folder)")
     p.add_argument("--firmware", choices=["bios", "uefi", "uefi-secure"])
     p.add_argument("--tpm", choices=["none", "2.0", "1.2"])
     p.add_argument("--network", default="nat", help="nat, none or bridge:BRIDGE")
@@ -58,7 +61,8 @@ def _spec(args):
         bridge=bridge, nic_model=args.nic_model, shares=args.share,
         extra_isos=[os.path.abspath(i) for i in args.extra_iso],
         floppy=os.path.abspath(args.floppy) if args.floppy else "",
-        existing_disk=os.path.abspath(args.use_disk) if args.use_disk else "")
+        existing_disk=os.path.abspath(args.use_disk) if args.use_disk else "",
+        disk_dir=args.disk_dir)
 
 
 def cmd_create(args) -> int:

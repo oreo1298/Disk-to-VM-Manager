@@ -83,6 +83,11 @@ class ImportWizard(Adw.Window):
             r.set_activatable_widget(check)
             mode.add(r)
             self.mode_rows[key] = check
+        from rehome.ui.disk_location import DiskLocationRow
+        self.copy_loc = DiskLocationRow(title="Store the copy in")
+        self.copy_loc.set_visible(False)
+        self.mode_rows["copy"].connect("toggled", lambda b: self.copy_loc.set_visible(b.get_active()))
+        mode.add(self.copy_loc)
         pref.add(mode)
         opts = Adw.PreferencesGroup(title="Safety")
         self.smart_row = Adw.SwitchRow(title="Check disk health first",
@@ -340,7 +345,8 @@ class ImportWizard(Adw.Window):
         opts = importer.ImportOptions(
             name=self.name_row.get_text().strip(), mode=self._mode(),
             verify_hash=self.verify_row.get_active(), keys=self.keys, os_index=a.os_index,
-            overrides=self._overrides(), patch=self.patch_row.get_active())
+            overrides=self._overrides(), patch=self.patch_row.get_active(),
+            disk_dir=self.copy_loc.folder if self._mode() == "copy" else None)
         if self.hib_row is not None:
             opts.discard_hibernation = combo_value(self.hib_row) == "discard"
         panel = ProgressPanel("Importing")

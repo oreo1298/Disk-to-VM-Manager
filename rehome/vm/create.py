@@ -9,6 +9,7 @@ from rehome.errors import RehomeError
 from rehome.host import info as host_info
 from rehome.patch import profiles
 from rehome.vm import disks, library
+from rehome.vm import storage as vmstorage
 from rehome.vm.config import Disk, Floppy, Nic, OsInfo, Share, VMConfig
 from rehome.vm.hardware import HardwareContext, add_cdrom, apply_profile, default_disk_size
 
@@ -31,6 +32,7 @@ class NewVMSpec:
     extra_isos: list[str] = field(default_factory=list)
     floppy: str = ""
     existing_disk: str = ""          # attach an existing image instead of a new one
+    disk_dir: str | None = None      # folder for the new disk: None = Preferences, "" = the VM's folder
     notes: str = ""
 
 
@@ -77,6 +79,8 @@ def plan(spec: NewVMSpec, host=None) -> CreatePlan:
     host = host or host_info.gather()
     if spec.iso and not os.path.isfile(spec.iso):
         raise RehomeError(f"The installer image {spec.iso} does not exist.")
+    if spec.disk_dir:
+        vmstorage.check_folder(spec.disk_dir)
     facts, label, storage, forced = _facts_for_spec(spec)
     prof = profiles.get(forced) if forced else profiles.select(facts)
     if not prof.supported:
@@ -88,9 +92,9 @@ def plan(spec: NewVMSpec, host=None) -> CreatePlan:
                     build=str(facts.get("build", "") or ""), edition=facts.get("edition", ""))
     size = spec.disk_size if spec.disk_size is not None else default_disk_size(prof, facts, storage)
     if spec.existing_disk:
-        fmt = disks.info(spec.existing_disk).get("format", "raw")
-        cfg.disks.append(Disk(id="disk0", file=spec.existing_disk, format=fmt,
-                              discard=fmt != "raw", boot_index=2 if spec.iso else 1))
+        d = vmstorage.image_disk(spec.existing_disk, "disk0", "virtio", cfg)
+        d.boot_index = 2 if spec.iso else 1
+        cfg.disks.append(d)
     elif size:
         cfg.disks.append(Disk(id="disk0", file="disks/disk0.qcow2",
                               boot_index=2 if spec.iso else 1))
@@ -151,13 +155,18 @@ def create(spec: NewVMSpec, host=None) -> VMConfig:
     cfg = p.config
     cfg.name = library.unique_name(cfg.name)
     library.create_dir(cfg)
+    made = []
     try:
         for d in cfg.disks:
-            if d.file == "disks/disk0.qcow2":
-                disks.create(cfg.resolve(d.file), p.disk_size)
+            if d.file == "disks/disk0.qcow2":          # the new disk planned above
+                d.file, d.owned = vmstorage.new_disk_path(cfg, d.id, spec.disk_dir)
+                made.append(cfg.resolve(d.file))
+                disks.create(made[-1], p.disk_size)
         library.save(cfg)
     except BaseException:
         import shutil
         shutil.rmtree(cfg.dir, ignore_errors=True)
+        for f in made:
+            f.unlink(missing_ok=True)
         raise
     return cfg

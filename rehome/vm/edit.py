@@ -9,8 +9,8 @@ from rehome.errors import RehomeError
 from rehome.host import info as host_info
 from rehome.util.units import mib, parse_size
 from rehome.vm import config as C
-from rehome.vm import disks, library, runner
-from rehome.vm.config import CdRom, Disk, Nic, Share, VMConfig
+from rehome.vm import disks, library, runner, storage
+from rehome.vm.config import CdRom, Nic, Share, VMConfig
 
 # Fields that can change while the VM runs (they take effect immediately or
 # do not affect the running QEMU process).
@@ -207,24 +207,18 @@ def apply_cli_changes(cfg: VMConfig, args) -> list[str]:
             log.append(f"pointer → {args.pointer}")
         for spec in args.add_disk:
             size_s, _, bus = spec.partition(":")
-            did = new.next_id("disk", new.disks)
-            path = f"disks/{did}.qcow2"
-            disks.create(new.resolve(path), parse_size(size_s))
-            created_files.append(str(new.resolve(path)))
-            new.disks.append(Disk(id=did, file=path, bus=bus or (new.disks[0].bus if new.disks else "virtio")))
-            log.append(f"added {did} ({size_s})")
+            d = storage.new_disk(new, parse_size(size_s), getattr(args, "disk_dir", None), bus or None)
+            created_files.append(str(new.resolve(d.file)))
+            new.disks.append(d)
+            where = f" in {d.file}" if d.owned else ""
+            log.append(f"added {d.id} ({size_s}){where}")
         for spec in args.attach_disk:
             img, bus = spec, ""
             if ":" in spec and spec.rsplit(":", 1)[1] in C.DISK_BUSES:
                 img, bus = spec.rsplit(":", 1)
-            img = os.path.abspath(img)
-            if not os.path.exists(img):
-                raise RehomeError(f"{img} does not exist.")
-            fmt = disks.info(img).get("format", "raw")
-            did = new.next_id("disk", new.disks)
-            new.disks.append(Disk(id=did, file=img, format=fmt, bus=bus or "virtio",
-                                  discard=fmt != "raw"))
-            log.append(f"attached {img} as {did}")
+            d = storage.image_disk(img, new.next_id("disk", new.disks), bus or "virtio", new)
+            new.disks.append(d)
+            log.append(f"attached {d.file} as {d.id}")
         for did in args.remove_disk:
             d = new.disk(did)
             new.disks.remove(d)

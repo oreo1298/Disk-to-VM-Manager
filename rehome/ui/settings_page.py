@@ -8,7 +8,7 @@ import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-from gi.repository import Adw, GLib, Gtk  # noqa: E402
+from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
 
 from rehome.host import info as host_info  # noqa: E402
 from rehome.ui.common import combo_row, combo_value, confirm, run_async, show_error  # noqa: E402
@@ -127,19 +127,23 @@ class SettingsPage(Gtk.Box):
         g = Adw.PreferencesGroup(title="Storage")
         add_disk = Gtk.Button(icon_name="list-add-symbolic", tooltip_text="Add a disk", valign=Gtk.Align.CENTER)
         add_disk.add_css_class("flat")
-        add_disk.connect("clicked", lambda *_: self._add_disk())
+        add_disk.connect("clicked", lambda *_: self._disk_dialog())
         add_disk.set_sensitive(hw_ok)
         g.set_header_suffix(add_disk)
         self.disk_rows = []
+        self.disk_sizes = {}
         for d in self.work.disks:
-            exp = Adw.ExpanderRow(title=f"Disk {d.id}", subtitle=GLib.markup_escape_text(d.file))
+            exp = Adw.ExpanderRow(title=f"Disk {d.id}",
+                                  subtitle=GLib.markup_escape_text(str(self.work.resolve(d.file))))
             labels, values = _items(DISK_BUS_LABELS)
             bus = combo_row("Bus", labels, values, d.bus)
             exp.add_row(bus)
             size_row = Adw.ActionRow(title="Size")
+            def got_size(info, r=size_row, d=d):
+                self.disk_sizes[d.id] = info.get("virtual-size", 0) if info else 0
+                r.set_subtitle(human(self.disk_sizes[d.id]) if info else "?")
             run_async(lambda d=d: disk_mod.info(self.work.resolve(d.file)) if os.path.exists(self.work.resolve(d.file)) else {},
-                      lambda info, r=size_row: r.set_subtitle(human(info.get("virtual-size", 0)) if info else "?"),
-                      lambda e: None)
+                      got_size, lambda e: None)
             grow = Gtk.Button(label="Enlarge…", valign=Gtk.Align.CENTER)
             grow.connect("clicked", lambda *_, d=d: self._resize(d))
             grow.set_sensitive(hw_ok and d.format in ("qcow2", "raw"))
@@ -148,7 +152,14 @@ class SettingsPage(Gtk.Box):
             if d.source:
                 exp.add_row(Adw.ActionRow(title="Source", subtitle=GLib.markup_escape_text(
                     f"{d.source.mode}: {d.source.label or d.source.path}")))
-            rm = Adw.ActionRow(title="Remove this disk", subtitle="The file is kept")
+            swap = Adw.ActionRow(title="Replace this disk",
+                                 subtitle="With another disk image or a new empty disk")
+            swapb = Gtk.Button(label="Replace…", valign=Gtk.Align.CENTER)
+            swapb.connect("clicked", lambda *_, d=d: self._disk_dialog(d))
+            swapb.set_sensitive(hw_ok)
+            swap.add_suffix(swapb)
+            exp.add_row(swap)
+            rm = Adw.ActionRow(title="Remove this disk")
             rmb = Gtk.Button(icon_name="user-trash-symbolic", valign=Gtk.Align.CENTER)
             rmb.add_css_class("flat")
             rmb.connect("clicked", lambda *_, d=d: self._remove_disk(d))
@@ -316,39 +327,143 @@ class SettingsPage(Gtk.Box):
 
     # --- list operations ---------------------------------------------------------------
 
-    def _add_disk(self):
-        entry = Gtk.Entry(text="32G", activates_default=True)
-        dlg = Adw.AlertDialog(heading="Add a disk", body="Size of the new disk (it grows as data is written):")
-        dlg.set_extra_child(entry)
+    def _disk_dialog(self, old: Disk | None = None):
+        """Add a disk, or replace ``old``: a new empty disk (size, folder) or an existing image."""
+        from rehome.ui.disk_location import DiskLocationRow
+        from rehome.vm import storage
+        cfg = self.page.cfg
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        rows = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
+        rows.add_css_class("boxed-list")
+        new_check = Gtk.CheckButton(active=True)
+        img_check = Gtk.CheckButton(group=new_check)
+        new_row = Adw.ActionRow(title="A new, empty disk", subtitle="It grows as data is written")
+        new_row.add_prefix(new_check)
+        new_row.set_activatable_widget(new_check)
+        size = self.disk_sizes.get(old.id, 0) if old else 0
+        size_row = Adw.EntryRow(title="Size", text=human(size).replace(".0 ", " ").replace("iB", "")
+                                if size else "32G")
+        loc = DiskLocationRow(cfg, need=size or 32 * 2**30)
+        size_row.connect("changed", lambda r: self._set_need(loc, r.get_text()))
+        img_row = Adw.ActionRow(title="An existing disk image",
+                                subtitle="qcow2, raw, VMDK, VDI or VHD(X), used where it is")
+        img_row.add_prefix(img_check)
+        img_row.set_activatable_widget(img_check)
+        pick = Gtk.Button(label="Choose…", valign=Gtk.Align.CENTER)
+        img_row.add_suffix(pick)
+        for r in (new_row, size_row, loc, img_row):
+            rows.append(r)
+        box.append(rows)
+        delete_old = None
+        if old is not None and storage.created_by_rehome(cfg, old):
+            delete_old = Gtk.CheckButton(label="Delete the old disk file (everything on it is lost)")
+            box.append(delete_old)
+        image = {"path": ""}
+
+        def sync(*_):
+            fresh = new_check.get_active()
+            size_row.set_sensitive(fresh)
+            loc.set_sensitive(fresh)
+        new_check.connect("toggled", sync)
+        sync()
+
+        def choose_image(*_):
+            f = Gtk.FileFilter()
+            f.set_name("Disk images")
+            for ext in ("qcow2", "img", "raw", "vmdk", "vdi", "vhd", "vhdx", "qed"):
+                f.add_pattern(f"*.{ext}")
+                f.add_pattern(f"*.{ext.upper()}")
+            any_file = Gtk.FileFilter()
+            any_file.set_name("All files")
+            any_file.add_pattern("*")
+            filters = Gio.ListStore.new(Gtk.FileFilter)
+            filters.append(f)
+            filters.append(any_file)
+
+            def done(d, res):
+                try:
+                    path = d.open_finish(res).get_path()
+                except GLib.Error:
+                    return
+                image["path"] = path
+                img_row.set_subtitle(GLib.markup_escape_text(path))
+                img_check.set_active(True)
+            Gtk.FileDialog(title="Choose a disk image", filters=filters,
+                           default_filter=f).open(self.get_root(), None, done)
+        pick.connect("clicked", choose_image)
+
+        if old is None:
+            dlg = Adw.AlertDialog(heading="Add a disk")
+        else:
+            dlg = Adw.AlertDialog(heading=f"Replace {old.id}",
+                                  body="The VM uses the new disk in its place, on the same bus and at "
+                                       "the same boot position.")
+        dlg.set_extra_child(box)
         dlg.add_response("cancel", "Cancel")
-        dlg.add_response("ok", "Add")
+        dlg.add_response("ok", "Replace" if old else "Add")
         dlg.set_default_response("ok")
         dlg.set_response_appearance("ok", Adw.ResponseAppearance.SUGGESTED)
 
         def resp(_d, r):
             if r != "ok":
                 return
-            try:
-                size = parse_size(entry.get_text(), "g")
-            except ValueError:
-                show_error(self, ValueError(f"\"{entry.get_text()}\" is not a size such as 32G."))
+            kw = {}
+            if new_check.get_active():
+                try:
+                    kw["size"] = parse_size(size_row.get_text(), "g")
+                except ValueError:
+                    show_error(self, ValueError(f"\"{size_row.get_text()}\" is not a size such as 32G."))
+                    return
+                kw["folder"] = loc.folder
+            elif image["path"]:
+                kw["image"] = image["path"]
+            else:
+                show_error(self, ValueError("Choose a disk image file."))
                 return
-            did = self.work.next_id("disk", self.work.disks)
-            rel = f"disks/{did}.qcow2"
-            path = self.work.resolve(rel)
-            bus = self.work.disks[0].bus if self.work.disks else "virtio"
-
-            def make():
-                disk_mod.create(path, size)
-                self.work.disks.append(Disk(id=did, file=rel, bus=bus))
-            run_async(make, lambda _: self._rebuild_keep(), lambda e: show_error(self, e))
+            if old is None:
+                def work():
+                    d = storage.add_disk(cfg, **kw)
+                    return f"Added {d.id}"
+            else:
+                def work():
+                    _d, note = storage.replace_disk(
+                        cfg, old.id, delete_old=bool(delete_old and delete_old.get_active()), **kw)
+                    return f"Replaced {old.id}. {note}".strip()
+            run_async(work, self._disks_changed, lambda e: show_error(self, e))
         dlg.connect("response", resp)
         dlg.present(self.get_root())
 
+    @staticmethod
+    def _set_need(loc, text):
+        try:
+            loc.set_need(parse_size(text, "g"))
+        except ValueError:
+            pass
+
+    def _disks_changed(self, note: str = ""):
+        """A disk was added, replaced or removed (saved already); keep the form's other edits."""
+        from rehome.vm import library
+        self.work.disks = library.reload(self.page.cfg).disks
+        self.page.reload()
+        self._rebuild_keep()
+        self.page.window.toast(note or "Disks updated", 6)
+
     def _remove_disk(self, d):
-        confirm(self, f"Remove {d.id}?", "The disk is detached from the VM; its file is kept on disk.",
-                "Remove", lambda: (self.work.disks.remove(next(x for x in self.work.disks if x.id == d.id)),
-                                   self._rebuild_keep()), destructive=True)
+        from rehome.vm import storage
+        cfg = self.page.cfg
+        delete = None
+        body = "The disk is detached from the VM."
+        if storage.created_by_rehome(cfg, d) and not (d.source and d.source.mode == "linked"
+                                                       and not storage.is_inside_vm(cfg, d)):
+            delete = Gtk.CheckButton(label="Also delete its file (everything on it is lost)")
+        else:
+            body += " Its file is not deleted (Rehome did not create it)."
+
+        def do():
+            run_async(lambda: storage.remove_disk(cfg, d.id, bool(delete and delete.get_active())),
+                      lambda note: self._disks_changed(f"Removed {d.id}. {note}".strip()),
+                      lambda e: show_error(self, e))
+        confirm(self, f"Remove {d.id}?", body, "Remove", do, destructive=True, extra=delete)
 
     def _resize(self, d):
         entry = Gtk.Entry(text="", placeholder_text="e.g. 128G", activates_default=True)

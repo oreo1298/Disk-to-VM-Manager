@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 import shutil
 import tarfile
 import uuid
@@ -11,7 +10,7 @@ from pathlib import Path
 
 from rehome.errors import RehomeError
 from rehome.util import toml
-from rehome.vm import disks, library, runner
+from rehome.vm import disks, library, runner, storage
 from rehome.vm.config import VMConfig, now_iso, random_mac
 
 EXPORT_FORMAT = "rehome-export-1"
@@ -31,8 +30,12 @@ def _copy_file(src: Path, dst: Path) -> None:
     shutil.copy2(src, dst)
 
 
-def clone(cfg: VMConfig, new_name: str, progress=None) -> VMConfig:
-    """Full clone. Linked imports stay linked to the same (read-only) source."""
+def clone(cfg: VMConfig, new_name: str, progress=None, folder: str | None = None) -> VMConfig:
+    """Full clone. Linked imports stay linked to the same (read-only) source.
+
+    Disk copies go to ``folder`` (None: the default folder for new disks, "": the VM's);
+    the small overlays of linked imports stay in the VM's folder.
+    """
     if runner.state(cfg).active:
         raise RehomeError(f"\"{cfg.name}\" must be turned off to clone it.",
                           fix="Shut the VM down (or save it) first.")
@@ -44,17 +47,19 @@ def clone(cfg: VMConfig, new_name: str, progress=None) -> VMConfig:
     new.current_snapshot = ""
     for n in new.nics:
         n.mac = random_mac()
+    if folder:
+        storage.check_folder(folder)
     library.create_dir(new)
+    made = []
     try:
         total = len(cfg.disks) or 1
         for i, d in enumerate(new.disks):
             src = cfg.resolve(d.file)
-            if not Path(d.file).is_absolute():
-                dst = new.resolve(d.file)
-            else:
-                dst = new.dir / "disks" / Path(d.file).name
-                d.file = f"disks/{dst.name}"
+            overlay = d.source is not None and d.source.mode == "linked"
+            d.file, d.owned = storage.new_disk_path(new, d.id, "" if overlay else folder, d.format)
+            dst = new.resolve(d.file)
             dst.parent.mkdir(parents=True, exist_ok=True)
+            made.append(dst)
             _copy_file(src, dst)
             if d.format == "qcow2":
                 for s in disks.snapshot_list(str(dst)):
@@ -72,6 +77,8 @@ def clone(cfg: VMConfig, new_name: str, progress=None) -> VMConfig:
         library.save(new)
     except BaseException:
         shutil.rmtree(new.dir, ignore_errors=True)
+        for f in made:
+            f.unlink(missing_ok=True)
         raise
     return new
 
@@ -107,7 +114,7 @@ def export(cfg: VMConfig, dest: str, compress: bool = False, progress=None) -> P
             disks.convert(src_spec, str(work / "disks" / name), src_fmt=d.format,
                           compress=compress, progress=prog, image_opts=image_opts)
             d.file = f"disks/{name}"
-            d.format = "qcow2"
+            d.format, d.owned = "qcow2", False
             if d.source:
                 d.source.mode = "copy"
         out.snapshots, out.current_snapshot = [], ""
@@ -166,26 +173,20 @@ def import_bundle(archive: str, name: str | None = None) -> VMConfig:
     return cfg
 
 
-def make_standalone(cfg: VMConfig, progress=None, cancel=None) -> None:
-    """Flatten linked-import disks into standalone images (source can be removed)."""
+def make_standalone(cfg: VMConfig, progress=None, cancel=None, folder: str | None = None) -> None:
+    """Flatten linked-import disks into standalone images (source can be removed).
+
+    The copies go to ``folder`` (None: the default folder for new disks, "": the VM's).
+    """
     if runner.state(cfg).active:
         raise RehomeError("Turn the VM off first.")
     linked = [d for d in cfg.disks if d.source and d.source.mode == "linked"]
     if not linked:
         return
+    from rehome.disk import overlay
+    if folder:
+        storage.check_folder(folder)
     if any(d.source.kind == "block" for d in linked):
-        from rehome.disk import overlay
-        overlay.flatten_with_sources(cfg, linked, progress=progress, cancel=cancel)
-        return
-    for i, d in enumerate(linked):
-        src = cfg.resolve(d.file)
-        tmp = src.with_suffix(".standalone.qcow2")
-
-        def prog(frac, i=i):
-            if progress:
-                progress((i + frac) / len(linked))
-        disks.convert(str(src), str(tmp), src_fmt="qcow2", progress=prog, cancel=cancel)
-        os.replace(tmp, src)
-        d.source.mode = "copy"
-    cfg.snapshots, cfg.current_snapshot = [], ""
-    library.save(cfg)
+        overlay.flatten_with_sources(cfg, linked, progress=progress, cancel=cancel, folder=folder)
+    else:
+        overlay._flatten(cfg, linked, progress, cancel, folder)

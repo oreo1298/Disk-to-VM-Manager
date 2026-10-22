@@ -103,7 +103,9 @@ def revert(cfg: VMConfig, ref: str) -> Snapshot:
                 q.execute("cont")
     else:
         for _node, path in _targets(cfg):
-            disks.snapshot_apply(path, snap.id)
+            # Disks added after the checkpoint do not have it: they stay as they are.
+            if any(s.get("name") == snap.id for s in disks.snapshot_list(path)):
+                disks.snapshot_apply(path, snap.id)
         saved_tpm = _tpm_copy(cfg, snap.id)
         if saved_tpm.is_dir():
             shutil.rmtree(cfg.dir / "tpm", ignore_errors=True)

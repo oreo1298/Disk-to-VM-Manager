@@ -125,6 +125,9 @@ def register(sub) -> None:
                    help="attach an existing image file")
     p.add_argument("--remove-disk", metavar="DISK", action="append", default=[])
     p.add_argument("--resize-disk", metavar="DISK=SIZE", action="append", default=[])
+    p.add_argument("--disk-dir", metavar="FOLDER",
+                   help="folder for disks added with --add-disk (default: `rehome disk folder`, "
+                        "else the VM's folder)")
     p.add_argument("--add-cd", metavar="ISO", action="append", default=[], help="'' for empty drive")
     p.add_argument("--remove-cd", metavar="CD", action="append", default=[])
     p.add_argument("--add-share", metavar="PATH[:TAG]", action="append", default=[])
@@ -142,6 +145,9 @@ def register(sub) -> None:
     p = sub.add_parser("clone", help="Copy a VM")
     p.add_argument("vm")
     p.add_argument("name")
+    p.add_argument("--disk-dir", metavar="FOLDER",
+                   help="folder for the copied disk images (default: `rehome disk folder`, "
+                        "else the new VM's folder)")
     p.set_defaults(func=cmd_clone)
 
     p = sub.add_parser("export", help="Export a VM to a portable .rehome file")
@@ -421,14 +427,19 @@ def cmd_delete(args) -> int:
         if reply.strip() != cfg.name:
             print("Not deleted.")
             return 1
+    from rehome.vm import storage
+    elsewhere = storage.owned_files_outside(cfg) if args.keep_disks else []
     kept = library.delete(cfg, keep_disks=args.keep_disks)
     print(f"Deleted {cfg.name}." + (f" Disks kept in {kept}" if kept else ""))
+    for f in elsewhere:
+        print(f"  kept where it is: {f}")
     return 0
 
 
 def cmd_clone(args) -> int:
     from rehome.vm import lifecycle
-    new = lifecycle.clone(_vm(args.vm), args.name, progress=_progress_printer("Cloning"))
+    new = lifecycle.clone(_vm(args.vm), args.name, progress=_progress_printer("Cloning"),
+                          folder=args.disk_dir)
     print(f"Created {new.name} ({new.short_id}).")
     return 0
 

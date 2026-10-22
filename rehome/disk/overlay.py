@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import contextlib
 import os
-from pathlib import Path
 from typing import Callable, Iterable
 
 from rehome.disk import ewf, nbd
@@ -124,30 +123,50 @@ def create_linked(cfg: VMConfig, disk_id: str, src: Source) -> Disk:
 
 def create_copy(cfg: VMConfig, disk_id: str, src: Source, readable_path: str,
                 progress: Callable[[float], None] | None = None,
-                cancel: Callable[[], bool] | None = None) -> Disk:
-    rel = f"disks/{disk_id}.qcow2"
+                cancel: Callable[[], bool] | None = None,
+                folder: str | None = None) -> Disk:
+    """A standalone copy in ``folder`` (None: the default folder for new disks, "": the VM's)."""
+    from rehome.vm import storage
+    file, owned = storage.new_disk_path(cfg, disk_id, folder)
     fmt = "raw" if src.kind in ("block", "ewf") else src.format
-    disks.convert(readable_path, str(cfg.resolve(rel)), src_fmt=fmt, progress=progress,
-                  cancel=cancel)
-    return Disk(id=disk_id, file=rel, format="qcow2", source=to_disk_source(src, "copy"))
+    try:
+        disks.convert(readable_path, str(cfg.resolve(file)), src_fmt=fmt, progress=progress,
+                      cancel=cancel)
+    except BaseException:
+        cfg.resolve(file).unlink(missing_ok=True)
+        raise
+    return Disk(id=disk_id, file=file, format="qcow2", owned=owned,
+                source=to_disk_source(src, "copy"))
 
 
-def flatten_with_sources(cfg: VMConfig, linked: list[Disk], progress=None, cancel=None) -> None:
+def flatten_with_sources(cfg: VMConfig, linked: list[Disk], progress=None, cancel=None,
+                         folder: str | None = None) -> None:
     """Turn linked disks into standalone copies (source readable via SourceAccess)."""
-    from rehome.vm import library
     with SourceAccess([d.source for d in linked]):
-        for i, d in enumerate(linked):
-            path = cfg.resolve(d.file)
-            tmp = Path(str(path) + ".standalone")
+        _flatten(cfg, linked, progress, cancel, folder)
 
+
+def _flatten(cfg: VMConfig, linked: list[Disk], progress, cancel, folder) -> None:
+    from rehome.vm import library, storage
+    done = []                                   # (disk, its overlay's file entry, overlay path)
+    try:
+        for i, d in enumerate(linked):
             def prog(frac, i=i):
                 if progress:
                     progress((i + frac) / len(linked))
-            disks.convert(str(path), str(tmp), src_fmt="qcow2", progress=prog, cancel=cancel)
-            os.replace(tmp, path)
-            d.source.mode = "copy"
+            entry = (d, d.file, d.owned)
+            done.append((*entry, storage.flatten_disk(cfg, d, folder, progress=prog, cancel=cancel)))
+    except BaseException:
+        for d, file, owned, _old in done:       # undo the copies already made
+            cfg.resolve(d.file).unlink(missing_ok=True)
+            d.file, d.owned = file, owned
+        raise
+    for d in linked:
+        d.source.mode = "copy"
     cfg.snapshots, cfg.current_snapshot = [], ""
     library.save(cfg)
+    for *_entry, old in done:
+        old.unlink(missing_ok=True)
 
 
 def check_backing_reachable(cfg: VMConfig) -> list[str]:

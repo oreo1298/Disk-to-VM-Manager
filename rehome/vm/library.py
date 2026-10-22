@@ -124,17 +124,20 @@ def kept_disks_dir(name: str) -> Path:
 def delete(cfg: VMConfig, keep_disks: bool = False) -> Path | None:
     """Delete a stopped VM. With ``keep_disks`` the disk files are moved aside.
 
-    Returns the directory the disks were moved to, if any. Source disks of
-    linked imports are never touched (they are not inside the VM directory).
+    Returns the directory the disks were moved to, if any. Disks Rehome created
+    in another folder (see ``storage``) are deleted too, or with ``keep_disks``
+    left where they are. Files Rehome did not create (source disks of linked
+    imports, images attached as they are) are never touched.
     """
-    from rehome.vm import runner
+    from rehome.vm import runner, storage
     if runner.is_running(cfg):
         raise RehomeError(f"\"{cfg.name}\" is running.", fix="Shut the VM down first.")
+    outside = storage.owned_files_outside(cfg)
     kept = None
     if keep_disks:
-        files = [cfg.resolve(d.file) for d in cfg.disks if d.file]
+        files = [cfg.resolve(d.file) for d in cfg.disks if d.file and storage.is_inside_vm(cfg, d)]
         files = [f for f in files if f.exists()]
-        if files:
+        if files or outside:
             kept = kept_disks_dir(cfg.name)
             for f in files:
                 shutil.move(str(f), kept / f.name)
@@ -146,6 +149,10 @@ def delete(cfg: VMConfig, keep_disks: bool = False) -> Path | None:
         raise RehomeError("Refusing to delete a directory outside the VM library.",
                           details=str(target))
     shutil.rmtree(target)
+    if not keep_disks:
+        for f in outside:
+            if f.is_file():
+                f.unlink()
     try:
         shutil.rmtree(paths.vm_runtime_dir(cfg.id))
     except OSError:

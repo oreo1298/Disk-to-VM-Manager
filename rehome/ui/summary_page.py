@@ -209,14 +209,20 @@ class SummaryPage(Gtk.ScrolledWindow):
                   lambda e: show_error(self, e))
 
     def _standalone(self):
+        from rehome.ui.disk_location import DiskLocationRow
         from rehome.vm import lifecycle
         cfg = self.page.cfg
+        need = sum(d.source.size for d in cfg.disks if d.source and d.source.mode == "linked")
+        loc = DiskLocationRow(cfg, title="Store the copy in", need=need)
+        rows = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
+        rows.add_css_class("boxed-list")
+        rows.append(loc)
         confirm(self, "Make a standalone copy?",
                 "The VM's disk becomes independent of the original (it needs as much space as the "
                 "used part of the source). Checkpoints are removed.", "Make Standalone",
-                lambda: run_async(lambda: lifecycle.make_standalone(cfg),
+                lambda: run_async(lambda: lifecycle.make_standalone(cfg, folder=loc.folder),
                                   lambda _: (self.page.reload(), self.page.window.toast("The VM is standalone now")),
-                                  lambda e: show_error(self, e)))
+                                  lambda e: show_error(self, e)), extra=rows)
 
     def _tools(self, cfg):
         ii = cfg.import_info

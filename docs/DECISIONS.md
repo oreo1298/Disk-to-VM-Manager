@@ -641,3 +641,41 @@ and machines without libosinfo's GObject bindings fell through.
   hardware. A wrong guess is never a dead end.
 - Reading stops at the first volume descriptors and a few small files, so
   it is fast on multi-gigabyte ISOs and safe on files that are not ISOs.
+
+## D31. Where disks are stored; replacing a VM's disk
+
+Requested: choose where new disks go, so big VMs do not fill the system
+drive, and switch an existing VM's disk for another one.
+
+- **Default: the VM's folder**, as before. A **default folder** can be set
+  in Preferences (`[storage] disk_dir` in `settings.toml`, or
+  `rehome disk folder DIR`), and each new disk can get its own folder (New
+  VM wizard, Copy import, Add/Replace a disk, Make Standalone, clone;
+  `--disk-dir`/`--folder` on the command line, where `''` means the VM's
+  folder).
+- **Ownership is recorded, not guessed.** Disks Rehome creates outside the
+  VM's folder are marked `owned = true` in `vm.toml` and named
+  `<vm>-<id>-<disk>.qcow2`. They are deleted with the VM; with "keep the
+  disk files" they stay where they are (moving them to the kept-disks
+  folder could copy hundreds of gigabytes onto the system drive). Images
+  the user attached are never moved or deleted, not even when replacing or
+  removing them with "delete the old file" ticked.
+- **New files never overwrite.** `qemu-img create` overwrites silently, so
+  a new disk's name gets a `-2`, `-3`… suffix when the name is taken.
+- **Replacing a disk** keeps its ID, bus, boot position, cache mode and
+  serial, so the guest sees it at the same place. It is refused while the
+  VM runs, while it has a saved (suspended) state — resuming onto other
+  disks would corrupt them — and while it has checkpoints, which belong to
+  the current disks. The old file is kept unless the user ticks "delete",
+  and is deleted only after the new configuration is saved.
+- **Disk changes in the Settings tab apply at once** (like Enlarge…), since
+  they create or delete files; other unsaved edits on the page are kept.
+- **Attaching never takes a physical disk, or an image in use.** A path
+  under `/dev` or a block device is refused with a pointer to Import, which
+  reads disks read-only through an overlay (`rehome set --attach-disk` and
+  `rehome create --use-disk` previously accepted any path). So is an image
+  another disk or VM already uses (two writers corrupt it) and the
+  original of a linked import (it is only ever read).
+- **Checkpoints and added disks.** Reverting (VM off) to a checkpoint
+  taken before a disk was added leaves that disk as it is; it used to fail
+  because the new disk lacks the checkpoint.

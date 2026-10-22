@@ -46,6 +46,7 @@ class ImportOptions:
     patch: bool = True
     allow_failing_disk: bool = False
     smart_check: bool = True
+    disk_dir: str | None = None          # copy mode: folder for the copies (None = Preferences, "" = VM's)
 
 
 @dataclass
@@ -240,6 +241,9 @@ def run(a: Analysis, opts: ImportOptions, progress: jobs.Progress | None = None,
                 "and shut it down fully first.", code="needs-hibernation-choice")
     if opts.mode not in ("linked", "copy"):
         raise RehomeError(f"Unknown import mode \"{opts.mode}\".")
+    if opts.mode == "copy" and opts.disk_dir:
+        from rehome.vm import storage
+        storage.check_folder(opts.disk_dir)
     a.os_index = opts.os_index
     cfg = build_config(a, opts)
     cfg.name = library.unique_name(cfg.name)
@@ -270,7 +274,8 @@ def run(a: Analysis, opts: ImportOptions, progress: jobs.Progress | None = None,
                     def prog(frac, i=i):
                         progress.update((i + frac) / len(a.sources))
                     d = overlay.create_copy(cfg, f"disk{i}", s, access.paths.get(key, s.path),
-                                            progress=prog, cancel=progress.cancel_cb())
+                                            progress=prog, cancel=progress.cancel_cb(),
+                                            folder=opts.disk_dir)
                 d.bus, d.boot_index = cfg.disks[i].bus, cfg.disks[i].boot_index
                 d.source.sha256_before = before
                 d.source.original_bus = (o.original_bus if o and i == o.disk_index else "") \
@@ -308,6 +313,9 @@ def run(a: Analysis, opts: ImportOptions, progress: jobs.Progress | None = None,
         hashing.log_event(log, "failed", error=str(e))
         # Nothing of value exists yet (only the overlay/copy); never leave a half VM behind.
         shutil.rmtree(cfg.dir, ignore_errors=True)
+        for d in cfg.disks:
+            if d.owned:
+                cfg.resolve(d.file).unlink(missing_ok=True)
         raise
 
 

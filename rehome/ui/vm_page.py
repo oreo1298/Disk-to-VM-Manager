@@ -261,16 +261,26 @@ class VmPage(Gtk.Box):
         ApplianceDialog(self.get_root(), self.cfg).present()
 
     def _delete(self):
+        from rehome.vm import storage
         keep = Gtk.CheckButton(label="Keep the disk files (move them aside)")
         cfg = self.cfg
+        elsewhere = storage.owned_files_outside(cfg)
+
+        def deleted(kept):
+            msg = f"Deleted {cfg.name}"
+            if kept:
+                msg += f"; disks kept in {kept}" + (" and in their folders" if elsewhere else "")
+            self.window.toast(msg, 6)
+            self.window.store.refresh_now()
 
         def do():
-            run_async(lambda: library.delete(cfg, keep_disks=keep.get_active()),
-                      lambda kept: (self.window.toast(f"Deleted {cfg.name}" + (f"; disks kept in {kept}" if kept else ""), 6),
-                                    self.window.store.refresh_now()),
+            run_async(lambda: library.delete(cfg, keep_disks=keep.get_active()), deleted,
                       lambda e: show_error(self, e))
         linked = any(d.source and d.source.mode == "linked" for d in cfg.disks)
         body = (f"\"{cfg.name}\" and its checkpoints will be deleted.")
+        if elsewhere:
+            body += (" Its disk files in other folders are deleted too, unless you keep the disk "
+                     "files (those stay where they are).")
         if linked:
             body += " The original disk or image it was imported from is not touched."
         confirm(self, f"Delete {cfg.name}?", body, "Delete", do, destructive=True, extra=keep)

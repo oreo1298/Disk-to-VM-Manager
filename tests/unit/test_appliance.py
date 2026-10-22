@@ -154,6 +154,29 @@ def test_usb_skip_rules(tmp_path):
     assert "excluded" in runtime.usb_reason_to_skip(dev, stick, [], {"0781:5581"})
 
 
+def _input_dev(sysdir: Path, udev: Path, minor: int, props: list[str]):
+    ev = sysdir / f"{sysdir.name}:1.0" / f"0003:1234:{minor:04X}.0001" / "input" / \
+        f"input{minor}" / f"event{minor}"
+    ev.mkdir(parents=True)
+    (ev / "dev").write_text(f"13:{64 + minor}\n")
+    udev.mkdir(exist_ok=True)
+    (udev / f"c13:{64 + minor}").write_text("".join(f"E:{p}=1\n" for p in ["ID_INPUT"] + props))
+
+
+def test_usb_pointers_and_touchscreens_stay_game_controllers_go(tmp_path):
+    dev = usb.UsbHostDevice(bus=1, devnum=2, vendor_id="0627", product_id="0001")
+    udev = tmp_path / "udev"
+    tablet = _usbdev(tmp_path, "3-1", [("03", "00", "00")])     # no boot protocol
+    _input_dev(tablet, udev, 1, ["ID_INPUT_TABLET", "ID_INPUT_MOUSE"])
+    touch = _usbdev(tmp_path, "3-2", [("03", "00", "00")])
+    _input_dev(touch, udev, 2, ["ID_INPUT_TOUCHSCREEN"])
+    pad = _usbdev(tmp_path, "3-3", [("03", "00", "00")])
+    _input_dev(pad, udev, 3, ["ID_INPUT_JOYSTICK"])
+    assert "touchscreen" in runtime.usb_reason_to_skip(dev, tablet, [], set(), udev)
+    assert "touchscreen" in runtime.usb_reason_to_skip(dev, touch, [], set(), udev)
+    assert runtime.usb_reason_to_skip(dev, pad, [], set(), udev) == ""
+
+
 def test_start_checks_fit_the_vm_to_the_computer():
     cfg = VMConfig(name="XP")
     cfg.machine.memory_mib, cfg.machine.cpus = 8192, 8
@@ -183,10 +206,45 @@ def test_kiosk_console_kind_in_qemu_command(tmp_path):
     cfg.path.mkdir()
     cfg.display.console = "kiosk"
     sdl = argv_of(cfg, tmp_path, caps(displays={"gtk", "sdl", "none"})).argv
-    assert values(sdl, "-display") == ["sdl,window-close=off"] and "-full-screen" in sdl
+    assert values(sdl, "-display") == ["sdl,gl=on,window-close=off"] and "-full-screen" in sdl
+    plain = argv_of(cfg, tmp_path, caps(displays={"sdl"}), kiosk_gl=False).argv
+    assert values(plain, "-display") == ["sdl,window-close=off"]
     gtk = argv_of(cfg, tmp_path, caps(displays={"gtk", "none"})).argv
     assert values(gtk, "-display") == [("gtk,full-screen=on,zoom-to-fit=on,show-menubar=off,"
                                         "show-tabs=off,window-close=off")]
+
+
+def test_guest_is_offered_the_screen_resolution(tmp_path):
+    from tests.unit.test_qemu_cmd import argv_of, values
+    cfg = VMConfig(name="Linux")
+    cfg.path = tmp_path / "vm"
+    cfg.path.mkdir()
+    cfg.display.console = "kiosk"
+    for device, expect in (("virtio-vga", "virtio-vga,xres=1920,yres=1080,id=video0"),
+                           ("VGA", "VGA,xres=3840,yres=2160,vgamem_mb=32,id=video0"),
+                           ("cirrus-vga", "cirrus-vga,id=video0")):    # cirrus has no EDID
+        cfg.display.device = device
+        size = (3840, 2160) if device == "VGA" else (1920, 1080)
+        argv = argv_of(cfg, tmp_path, display_size=size).argv
+        assert expect in values(argv, "-device"), values(argv, "-device")
+    cfg.display.device = "virtio-vga"
+    assert "virtio-vga,id=video0" in values(argv_of(cfg, tmp_path).argv, "-device")
+
+
+def test_screen_size_from_drm(tmp_path):
+    for name, status, modes in (("card0-HDMI-A-1", "disconnected", ""),
+                                ("card0-eDP-1", "connected", "1920x1080\n1680x1050\n"),
+                                ("card1-DP-2", "connected", "3840x2160\n")):
+        d = tmp_path / name
+        d.mkdir()
+        (d / "status").write_text(status + "\n")
+        (d / "modes").write_text(modes)
+    assert hardware.screen_size(tmp_path) == (1920, 1080)
+    assert hardware.screen_size(tmp_path / "missing") is None
+    (tmp_path / "dri").mkdir()
+    assert not hardware.has_gpu_acceleration(tmp_path / "dri")
+    (tmp_path / "dri" / "renderD128").write_text("")
+    assert hardware.has_gpu_acceleration(tmp_path / "dri")
 
 
 def test_what_happens_when_the_vm_stops():

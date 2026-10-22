@@ -253,7 +253,8 @@ def check_resources(cfg: VMConfig, host, allow_overcommit: bool = False) -> None
 def start(cfg: VMConfig, *, headless: bool = False, paused: bool = False,
           restore: bool = True, loadvm: str = "", allow_overcommit: bool = False,
           extra_args: list[str] | None = None, accel: str | None = None,
-          fd_provider=None, start_timeout: float = 60.0) -> VMState:
+          fd_provider=None, start_timeout: float = 60.0,
+          display_size: tuple[int, int] | None = None, kiosk_gl: bool = True) -> VMState:
     """Start a VM and return once QEMU is up and answering QMP."""
     if is_running(cfg):
         raise RehomeError(f"\"{cfg.name}\" is already running.", code="already-running")
@@ -278,7 +279,8 @@ def start(cfg: VMConfig, *, headless: bool = False, paused: bool = False,
         stale.unlink(missing_ok=True)
     log_dir = paths.ensure(cfg.dir / "logs")
     opts = LaunchOptions(accel=choice.accel, headless=headless, paused=paused, loadvm=loadvm,
-                         log_dir=log_dir, extra_args=list(extra_args or []))
+                         log_dir=log_dir, extra_args=list(extra_args or []),
+                         display_size=display_size, kiosk_gl=kiosk_gl)
     fw_arch = "x86_64" if arch in ("i386", "i686") else arch
     if cfg.machine.firmware != "bios":
         fw = _pinned_firmware(cfg, host, fw_arch)

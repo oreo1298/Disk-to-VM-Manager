@@ -11,7 +11,6 @@ and the others run as root (see the units in data/appliance/rootfs).
 
 from __future__ import annotations
 
-import glob
 import json
 import logging
 import os
@@ -242,7 +241,10 @@ def kiosk() -> int:
     report = hardware.gather()
     free, grow = _disk_numbers(cfg)
     checks = hardware.start_checks(cfg, report, data_free=free, virtual_total=grow)
-    _write_json(LIMITS, {"memory_mib": cfg.machine.memory_mib, "cpus": cfg.machine.cpus})
+    gpu = hardware.has_gpu_acceleration() and not basic
+    gl = {"on": True, "off": False}.get(cmdline().get("rehome.gl", ""), True)
+    _write_json(LIMITS, {"memory_mib": cfg.machine.memory_mib, "cpus": cfg.machine.cpus,
+                         "screen": hardware.screen_size(), "gl": gl})
     countdown = int(conf.get("kiosk", {}).get("countdown", 3)) + (8 if checks.notes else 0)
     _say([f"Starting {cfg.name}...", ""] + [f"! {n}" for n in checks.notes]
          + ["", "Press M for the maintenance console."])
@@ -258,10 +260,15 @@ def kiosk() -> int:
     # kiosk window needs no decorations anyway.
     env.update(SDL_VIDEODRIVER="wayland", SDL_VIDEO_WAYLAND_ALLOW_LIBDECOR="0",
                GDK_BACKEND="wayland")
-    if basic or not glob.glob("/dev/dri/renderD*"):
+    if not gpu:
         # No GPU acceleration (basic graphics, or a display without a render node):
-        # wlroots refuses software OpenGL, so it uses its CPU renderer directly.
+        # wlroots refuses software OpenGL, so it uses its CPU renderer directly, and
+        # QEMU's window renders with Mesa's software OpenGL into shared memory (Mesa's
+        # EGL crashed QEMU when it looked for a GPU that is not there).
         env["WLR_RENDERER"] = "pixman"
+        env["LIBGL_ALWAYS_SOFTWARE"] = "1"
+        if not gl:
+            env["SDL_RENDER_DRIVER"] = "software"
     result = None
     rc = 0
     restarts = 0
@@ -297,7 +304,10 @@ def session() -> int:
         limits = _read_json(LIMITS) or {}
         cfg.machine.memory_mib = int(limits.get("memory_mib", cfg.machine.memory_mib))
         cfg.machine.cpus = int(limits.get("cpus", cfg.machine.cpus))
-        runner.start(cfg, allow_overcommit=True, start_timeout=600)
+        screen = limits.get("screen")
+        runner.start(cfg, allow_overcommit=True, start_timeout=600,
+                     display_size=tuple(screen) if screen else None,
+                     kiosk_gl=bool(limits.get("gl", True)))
     except RehomeError as e:
         _write_json(RESULT, {"outcome": "error", "message": " ".join(
             x for x in (f"The VM could not be started: {e.message}", e.fix or "") if x),
@@ -439,8 +449,29 @@ def _system_drive_paths() -> list[str]:
     return out
 
 
+UDEV_DATA = Path("/run/udev/data")
+# udev's classification of input devices that the appliance keeps: they reach the VM
+# through its screen (a touchscreen or drawing tablet acts as the VM's pointer).
+POINTER_OR_KEYBOARD = ("ID_INPUT_KEYBOARD", "ID_INPUT_MOUSE", "ID_INPUT_TOUCHPAD",
+                       "ID_INPUT_TOUCHSCREEN", "ID_INPUT_TABLET", "ID_INPUT_POINTINGSTICK")
+
+
+def _input_kinds(sysdir: Path, udev_data: Path = UDEV_DATA) -> set[str]:
+    """udev ID_INPUT_* properties of the input devices a USB device provides."""
+    kinds: set[str] = set()
+    for dev in sysdir.glob("*/*/input/input*/event*/dev"):
+        try:
+            major_minor = dev.read_text().strip()
+            for line in (udev_data / f"c{major_minor}").read_text().splitlines():
+                if line.startswith("E:ID_INPUT_") and line.endswith("=1"):
+                    kinds.add(line[2:-2])
+        except OSError:
+            continue
+    return kinds
+
+
 def usb_reason_to_skip(dev, sysdir: Path | None, system_paths: list[str],
-                       excluded: set[str]) -> str:
+                       excluded: set[str], udev_data: Path = UDEV_DATA) -> str:
     """Why a USB device stays with the appliance ("" = give it to the VM)."""
     if f"{dev.vendor_id}:{dev.product_id}" in excluded:
         return "excluded in the maintenance console"
@@ -460,6 +491,9 @@ def usb_reason_to_skip(dev, sysdir: Path | None, system_paths: list[str],
             return "keyboard or mouse (they reach the VM through its screen)"
         if (intf / "net").exists():
             return "network adapter (the appliance's network connection)"
+    if set(POINTER_OR_KEYBOARD) & _input_kinds(sysdir, udev_data):
+        return "keyboard, mouse, touchpad, touchscreen or pen tablet (they reach the VM " \
+               "through its screen)"
     return ""
 
 

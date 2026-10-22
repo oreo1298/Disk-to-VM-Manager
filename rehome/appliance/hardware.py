@@ -122,6 +122,22 @@ def gather() -> Report:
     return r
 
 
+def screen_size(drm: Path = Path("/sys/class/drm")) -> tuple[int, int] | None:
+    """The preferred mode of the first connected display (e.g. the laptop's panel)."""
+    for c in sorted(drm.glob("card*-*")):
+        if _read(c / "status") != "connected":
+            continue
+        m = re.match(r"(\d+)x(\d+)", _read(c / "modes"))
+        if m:
+            return int(m.group(1)), int(m.group(2))
+    return None
+
+
+def has_gpu_acceleration(dri: Path = Path("/dev/dri")) -> bool:
+    """A GPU driver with rendering is loaded (not just a plain framebuffer)."""
+    return any(dri.glob("renderD*"))
+
+
 def _gpus() -> list[str]:
     out = []
     text = _run(["lspci", "-nnk"])

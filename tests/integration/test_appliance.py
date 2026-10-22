@@ -112,6 +112,8 @@ class Serial:
 class Computer:
     """The outer QEMU: a PC that boots the appliance."""
 
+    SCREEN = (1920, 1080)           # a typical laptop panel
+
     def __init__(self, image: Path, work: Path, uefi: bool = False):
         self.work = work
         self.serial_sock = work / "serial.sock"
@@ -130,8 +132,11 @@ class Computer:
                 "-device", "qemu-xhci,id=xhci",
                 "-drive", f"if=none,id=stick,file={stick},format=raw",
                 "-device", "usb-storage,drive=stick,bus=xhci.0",
+                # An absolute pointing device, so tests can put the pointer anywhere.
+                "-device", "usb-tablet,bus=xhci.0",
                 "-nic", "user,model=virtio-net-pci",
-                "-vga", "std", "-display", "none",
+                "-device", f"VGA,xres={self.SCREEN[0]},yres={self.SCREEN[1]}",
+                "-display", "none",
                 "-chardev", f"socket,id=ser,path={self.serial_sock},server=on,wait=off,"
                             f"logfile={work / 'serial.log'}",
                 "-serial", "chardev:ser",

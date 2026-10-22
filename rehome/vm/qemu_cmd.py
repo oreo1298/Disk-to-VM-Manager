@@ -90,6 +90,15 @@ class LaunchOptions:
     swtpm: str | None = None
     log_dir: Path | None = None
     extra_args: list[str] = field(default_factory=list)
+    # Appliances: the screen's size, offered to the guest as its preferred resolution,
+    # and whether QEMU's kiosk window may draw with OpenGL.
+    display_size: tuple[int, int] | None = None
+    kiosk_gl: bool = True
+
+
+# Display devices whose preferred resolution (EDID) can be set.
+EDID_DEVICES = ("VGA", "virtio-vga", "virtio-vga-gl", "virtio-gpu-pci", "virtio-gpu-gl-pci",
+                "bochs-display")
 
 
 @dataclass
@@ -299,8 +308,18 @@ class Builder:
                 self.warnings.append(f"The display device {dev} is not available; using {fallback}.")
                 dev, gl = fallback, False
             props = [dev]
-            if d.vram_mib and dev in ("VGA", "cirrus-vga", "vmware-svga", "qxl-vga"):
-                props.append(f"vgamem_mb={d.vram_mib}")
+            vram = d.vram_mib
+            if self.opts.display_size and dev in EDID_DEVICES:
+                w, h = self.opts.display_size
+                props += [f"xres={w}", f"yres={h}"]
+                if dev == "VGA":
+                    # The framebuffer must hold the preferred mode at 32 bits per pixel.
+                    need = 16
+                    while need * 2**20 < w * h * 4:
+                        need *= 2
+                    vram = max(vram or 0, need)
+            if vram and dev in ("VGA", "cirrus-vga", "vmware-svga", "qxl-vga"):
+                props.append(f"vgamem_mb={vram}")
             if dev in ("cirrus-vga", "VGA", "vmware-svga", "qxl-vga", "virtio-vga", "virtio-vga-gl"):
                 props.append("id=video0")
             self.a("-device", ",".join(props))
@@ -324,8 +343,12 @@ class Builder:
             # scaled, in the cage kiosk compositor, and it cannot be closed. SDL
             # first: it has no menus, no hotkey that quits QEMU (GTK's Ctrl+Alt+Q)
             # and does not depend on GTK's sandboxed image loaders.
+            # With OpenGL, QEMU scales the picture itself; without it, SDL's logical size
+            # scaling also converts mouse positions, which QEMU 10 then scales a second
+            # time, so the pointer cannot reach parts of the screen (docs/DECISIONS.md D29).
             if "sdl" in self.caps.displays or not self.caps.displays:
-                self.a("-display", "sdl,window-close=off", "-full-screen")
+                gl_opt = "gl=on," if self.opts.kiosk_gl else ""
+                self.a("-display", f"sdl,{gl_opt}window-close=off", "-full-screen")
             else:
                 self.a("-display", "gtk,full-screen=on,zoom-to-fit=on,show-menubar=off,"
                                    "show-tabs=off,window-close=off")

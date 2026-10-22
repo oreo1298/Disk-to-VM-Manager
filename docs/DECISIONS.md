@@ -616,3 +616,28 @@ not fill the screen and the pointer could not reach large parts of it.
   changes. The pointer mapping follows from QEMU's and sdl2-compat's
   source; measuring it needs a guest that drives the USB tablet, which was
   too slow to boot inside the emulated computer.
+
+## D30. Recognising installer ISOs without libosinfo
+
+Reported: a new VM from an ISO (Omarchy) was not recognised, so it got
+generic hardware. libosinfo only knows releases it has a database entry
+for, matched by volume label; new releases, derivatives (Omarchy, CachyOS)
+and machines without libosinfo's GObject bindings fell through.
+
+- **libosinfo first, then the disc's own files.** `rehome/media/isoscan.py`
+  reads the ISO 9660 directory (Joliet and Rock Ridge names, no mounting,
+  no root) and looks for the files each installer is known by:
+  `TXTSETUP.SIF` (NT 4.0 to Server 2003, edition from the `WIN51xx` tag
+  files), `WIN98`/`WIN9X`/`WIN95` folders, `sources/idwbinfo.txt`
+  (Vista and later, release from the build branch), the UDF bridge README
+  of Windows 8+ discs, `arch/` (archiso), `.disk/info` (Ubuntu, Debian,
+  Mint…), `.treeinfo` (Fedora, RHEL), `bin/freebsd-version`, OpenBSD's
+  `bsd.rd`, ReactOS and FreeDOS folders, and Linux kernels in the usual
+  places. The result says which file it came from (`rehome os-detect`).
+- **Derivatives keep their own name** ("Omarchy (based on Arch Linux)") and
+  get their base system's profile.
+- **The wizard shows what was detected and lets you change it** (an
+  "Operating system" row on the hardware page); changing it re-plans the
+  hardware. A wrong guess is never a dead end.
+- Reading stops at the first volume descriptors and a few small files, so
+  it is fast on multi-gigabyte ISOs and safe on files that are not ISOs.

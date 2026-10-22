@@ -221,8 +221,10 @@ checkpoint first.
 
 Click **+ → New Virtual Machine…** or run `rehome create`.
 
-- **From an ISO.** Rehome identifies the system on the disc (via libosinfo)
-  and suggests the CPUs, memory, disk size, firmware and TPM.
+- **From an ISO.** Rehome identifies the system on the disc (via libosinfo,
+  or from the installer's own files for releases and derivatives libosinfo
+  does not know) and suggests the CPUs, memory, disk size, firmware and
+  TPM. You can change the detected system on the hardware page.
 - **Quick Create.** Downloads a free system from its official site and
   verifies the download:
   - Ubuntu Desktop and Server LTS, Fedora Workstation and Server, Debian,

@@ -29,6 +29,7 @@ class NewVmWizard(Adw.Window):
         self.iso = ""
         self.catalog_entry = None
         self.detected = None       # rehome.media.osinfo.MediaInfo
+        self.os_choice = ""        # "" = as detected; else a profile id chosen on the hardware page
         self.nav.add(self._source_page(start_with_catalog))
 
     # --- page 1 -----------------------------------------------------------------------------
@@ -121,6 +122,7 @@ class NewVmWizard(Adw.Window):
                 self.iso = d.open_finish(res).get_path()
             except GLib.Error:
                 return
+            self.os_choice = ""
             self.iso_row.set_title(GLib.markup_escape_text(os.path.basename(self.iso)))
             self.iso_row.set_subtitle("Recognising…")
             from rehome.media import osinfo
@@ -143,7 +145,39 @@ class NewVmWizard(Adw.Window):
             ids = self.catalog_entry.osinfo
             spec.os = ids[0] if ids else ""
             spec.name = self.catalog_entry.name
+        elif self.os_choice:
+            spec.os = self.os_choice
+            spec.name = getattr(self, "_kept_name", "")
         return spec
+
+    def _os_row(self, plan):
+        """Operating system: as detected, or a system type picked by the user."""
+        from rehome.patch import profiles
+        order = ["windows-11", "windows-modern", "windows-vista-7", "windows-xp", "windows-2000",
+                 "windows-nt4", "win98", "win95", "dos", "linux", "linux-legacy", "bsd", "reactos",
+                 "generic"]
+        known = {p.id: p for p in profiles.load_all() if p.supported}
+        ids = [i for i in order if i in known] + sorted(set(known) - set(order))
+        auto = (f"As detected: {plan.os_label}" if self.iso and self.detected is not None
+                and self.detected.os else "Not recognised: choose one")
+        labels, values = [auto], [""]
+        if self.src_catalog.get_active():
+            labels, values = [f"{plan.os_label}"], [""]
+        labels += [known[i].name for i in ids]
+        values += ids
+        row = combo_row("Operating system", labels, values, self.os_choice,
+                        subtitle="Decides the virtual hardware (drivers the system has built in).")
+        row.set_sensitive(not self.src_catalog.get_active())
+
+        def changed(r, _pspec):
+            value = combo_value(r)
+            if value != self.os_choice:
+                self.os_choice = value
+                self._kept_name = self.name_row.get_text().strip()
+                self.nav.pop()
+                self._to_hardware()
+        row.connect("notify::selected", changed)
+        return row
 
     def _to_hardware(self):
         if self.src_catalog.get_active():
@@ -165,6 +199,7 @@ class NewVmWizard(Adw.Window):
         pref = Adw.PreferencesPage()
         g = Adw.PreferencesGroup(title=plan.os_label, description=f"Settings recommended for "
                                                                    f"{plan.os_label}.")
+        g.add(self._os_row(plan))
         self.name_row = Adw.EntryRow(title="Name", text=cfg.name)
         self.cpus = Adw.SpinRow.new_with_range(1, host.threads, 1)
         self.cpus.set_title("Virtual CPUs")

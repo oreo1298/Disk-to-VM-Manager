@@ -63,7 +63,7 @@ def _facts_for_spec(spec: NewVMSpec) -> tuple[dict, str, int, str]:
         raise RehomeError(f"Unknown operating system \"{spec.os}\".",
                           fix="Use a libosinfo short ID such as win11, ubuntu24.04 or freedos1.3 "
                               "(see `rehome os-list`), or leave it out to detect it from the ISO.")
-    if spec.iso and osinfo.available():
+    if spec.iso:
         mi = osinfo.identify_media(spec.iso)
         if mi.os:
             facts = mi.os.facts()

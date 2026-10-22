@@ -186,6 +186,7 @@ class MediaInfo:
     installer: bool = True
     live: bool = False
     arch: str = ""
+    evidence: str = ""          # how a non-libosinfo match was made
 
     @property
     def label(self) -> str:
@@ -193,33 +194,63 @@ class MediaInfo:
 
 
 def identify_media(path: str) -> MediaInfo:
-    """Identify an installer ISO. Falls back to volume-label heuristics."""
-    Lib = _lib()
-    try:
-        media = Lib.Media.create_from_location(path, None)
-    except Exception as e:  # not an ISO9660 image, unreadable, ...
-        log.debug("osinfo media detection failed: %s", e)
-        return MediaInfo(path=path, os=None)
-    vol = media.get_volume_id() or ""
-    info = MediaInfo(path=path, os=None, volume_id=vol, arch=media.get_architecture() or "")
-    db = _db()
-    try:
-        matched = db.identify_media(media)
-    except Exception:
-        matched = False
-    if matched:
-        os_obj = media.get_os()
-        info.os = entry(os_obj) if os_obj else None
+    """Identify an installer ISO: libosinfo first, then the ISO's own files and label.
+
+    Works without libosinfo (with less detail): see rehome/media/isoscan.py.
+    """
+    from rehome.media import isoscan
+    info = MediaInfo(path=path, os=None)
+    if available():
+        Lib = _lib()
         try:
-            info.installer = media.get_installer()
-            info.live = media.get_live()
-        except Exception:
-            pass
-    else:
-        guess = guess_from_label(vol)
-        if guess:
-            info.os = by_short_id(guess) or KNOWN_EXTRA.get(guess)
+            media = Lib.Media.create_from_location(path, None)
+        except Exception as e:  # not an ISO9660 image, unreadable, ...
+            log.debug("osinfo media detection failed: %s", e)
+            media = None
+        if media is not None:
+            info.volume_id = media.get_volume_id() or ""
+            info.arch = media.get_architecture() or ""
+            try:
+                matched = _db().identify_media(media)
+            except Exception:
+                matched = False
+            if matched:
+                os_obj = media.get_os()
+                info.os = entry(os_obj) if os_obj else None
+                try:
+                    info.installer = media.get_installer()
+                    info.live = media.get_live()
+                except Exception:
+                    pass
+    if info.os is None:
+        guess = isoscan.detect(path)
+        info.volume_id = info.volume_id or isoscan.volume_id(path)
+        if guess is not None:
+            info.os = entry_from_guess(guess)
+            info.arch = info.arch or guess.arch
+            info.evidence = guess.evidence
+        else:
+            sid = guess_from_label(info.volume_id)
+            if sid:
+                info.os = (by_short_id(sid) if available() else None) or KNOWN_EXTRA.get(sid)
+                info.evidence = f"volume label {info.volume_id}"
     return info
+
+
+def entry_from_guess(g) -> OsEntry:
+    """An OsEntry for an isoscan.Guess, with libosinfo's details when it knows the OS."""
+    base = None
+    if g.short_id and available():
+        try:
+            base = by_short_id(g.short_id)
+        except Exception:
+            base = None
+    base = base or KNOWN_EXTRA.get(g.short_id)
+    if base is not None:
+        base.name = g.name or base.name     # keep the specific name (e.g. a derived distro)
+        return base
+    return OsEntry(short_id=g.short_id, name=g.name, id="", family=g.family, distro=g.distro,
+                   version=g.version)
 
 
 # Operating systems that osinfo-db does not (always) describe.

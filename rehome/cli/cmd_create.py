@@ -141,9 +141,11 @@ def cmd_os_detect(args) -> int:
     from rehome.media import osinfo
     mi = osinfo.identify_media(os.path.abspath(args.iso))
     if args.json:
-        print_json({"label": mi.label, "volume_id": mi.volume_id,
+        print_json({"label": mi.label, "volume_id": mi.volume_id, "evidence": mi.evidence,
                     "os": mi.os.short_id if mi.os else None,
                     "facts": mi.os.facts() if mi.os else None})
         return 0
-    print(f"{mi.label}  (volume label {mi.volume_id!r}, os id {mi.os.short_id if mi.os else '-'})")
+    how = f", recognised by {mi.evidence}" if mi.evidence else ""
+    print(f"{mi.label}  (volume label {mi.volume_id!r}, os id "
+          f"{mi.os.short_id if mi.os and mi.os.short_id else '-'}{how})")
     return 0

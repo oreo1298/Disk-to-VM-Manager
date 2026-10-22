@@ -84,6 +84,19 @@ At power-on:
 | Plug in a USB device | It is given to the VM, except keyboards and mice (they already reach the VM), network adapters, and the drive the appliance runs from. |
 | Press Esc while the computer starts | The boot menu appears. |
 
+### Screen and mouse
+
+The VM's picture fills the screen. Guests that can follow the screen's
+resolution (Linux, Windows 7 and later) are offered the screen's native
+resolution; older ones (XP, 98) keep the resolution set inside them and are
+scaled to fit, with black bars when the shape differs (a 4:3 desktop on a
+16:9 laptop). The pointer reaches the whole picture either way.
+
+If the picture is garbled or the screen stays black with a particular
+graphics card, press Esc while the computer starts, select the **Start**
+entry, press `e`, add `rehome.gl=off` to the line that starts with `linux`,
+and press F10; or choose **with basic graphics**.
+
 ### The boot menu
 
 - **Start** *VM* — the default.

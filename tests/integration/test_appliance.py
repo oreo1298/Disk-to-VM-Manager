@@ -34,6 +34,9 @@ if freedos.available() or not shutil.which("qemu-system-x86_64"):
                 allow_module_level=True)
 
 PASSWORD = "rehome-test"
+# A DOS program switching to VESA mode 117h (1024x768, 16-bit colour), like a Windows desktop:
+# mov ax,4F02h / mov bx,0117h / int 10h / ret
+VBE_COM = bytes([0xB8, 0x02, 0x4F, 0xBB, 0x17, 0x01, 0xCD, 0x10, 0xC3])
 # Terminal escapes: OSC (systemd's shell context markers, titles) and CSI sequences.
 ESCAPES = re.compile(r"\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b\[[0-9;?]*[A-Za-z]")
 KVM = os.access("/dev/kvm", os.R_OK | os.W_OK)
@@ -171,6 +174,20 @@ class Computer:
         self.qmp("screendump", {"filename": str(png), "format": "png"})
         return ocr(png)
 
+    def picture_columns(self, name: str) -> tuple[int, int]:
+        """First and last screen column showing the VM's picture (not the uniform side bars)."""
+        from PIL import Image
+        png = self.work / f"{name}.png"
+        self.qmp("screendump", {"filename": str(png), "format": "png"})
+        im = Image.open(png).convert("RGB")
+        w, h = im.size
+        bar = im.getpixel((0, h // 2))
+
+        def is_bar(x):
+            return all(im.getpixel((x, y)) == bar for y in range(0, h, 16))
+        cols = [x for x in range(w) if not is_bar(x)]
+        return (cols[0], cols[-1] + 1) if cols else (0, w)
+
     def stop(self):
         if self.proc.poll() is None:
             self.proc.kill()
@@ -196,6 +213,10 @@ def appliance(tmp_path_factory):
     work = tmp_path_factory.mktemp("appliance")
     img = work / "freedos.img"
     freedos.build(img)
+    from rehome.inspect import gfs
+    with gfs.session([gfs.Drive(str(img), "raw", False)]) as g:
+        g.mount("/dev/sda1", "/")
+        g.write("/VBE.COM", VBE_COM)
     disk = work / "disk.qcow2"
     disks.convert(str(img), str(disk), src_fmt="raw")
     cfg = create.create(create.NewVMSpec(name="FreeDOS Appliance", os="freedos1.3",
@@ -290,6 +311,20 @@ def test_boots_on_bios_and_runs_the_vm(appliance, tmp_path):
         text = pc.screen_text("bios-vm")
         if shutil.which("tesseract"):
             assert "FREEDOS" in text.upper() or "REHOME" in text.upper(), text
+        # QEMU draws its window with OpenGL (SDL's 2D scaling breaks the pointer, D29).
+        _, display = sh.run("grep -o -- '-display [^ ]*' /var/lib/rehome/data/vms/*/logs/qemu.log "
+                            "| tail -1")
+        assert "sdl,gl=on" in display, display
+        # A 4:3 guest mode on the 16:9 screen: full height, centred, nothing cut off.
+        sh.run(f"rehome type {cfg.id} vbe && rehome send-keys {cfg.id} ret")
+        time.sleep(30 * SLOW)
+        left, right = pc.picture_columns("bios-vesa")
+        w, h = Computer.SCREEN
+        expect = h * 4 // 3
+        assert abs(left - (w - expect) // 2) <= 8 and abs(right - (w + expect) // 2) <= 8, \
+            (left, right)
+        _, alive = sh.run("pgrep -f '^/usr/bin/qemu-system' >/dev/null && echo alive")
+        assert "alive" in alive
         # The power button reaches the appliance (FreeDOS ignores ACPI, so it keeps running).
         pc.qmp("system_powerdown")
         deadline = time.monotonic() + 60 * SLOW

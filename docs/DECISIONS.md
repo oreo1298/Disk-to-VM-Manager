@@ -579,3 +579,40 @@ without root.
 - It runs as root without a password by default: whoever reaches the boot
   menu has the machine in hand anyway. `--maintenance-password` sets a root
   password that the console asks for.
+
+## D29. Appliance display: scaling, pointer and resolution
+
+Reported from a ThinkPad X1 Carbon running an Omarchy VM: the picture did
+not fill the screen and the pointer could not reach large parts of it.
+
+- **Cause of the pointer problem.** QEMU 10's SDL display converts mouse
+  positions from window to guest pixels (`x * guest_width / window_width`).
+  In its 2D mode it also sets SDL's logical size to the guest's size, and
+  SDL (and sdl2-compat on SDL3) then already reports mouse positions in
+  guest pixels. Scaled twice, the pointer stops short of the right and
+  bottom of the screen whenever the picture is scaled: with a 1280×800
+  guest on a 1920×1080 screen it reaches about two thirds.
+- **Fix: QEMU's SDL OpenGL mode (`gl=on`).** There QEMU scales the picture
+  itself (keeping the aspect ratio) and SDL reports window positions, so
+  QEMU's conversion is the only one and every part of the guest's screen
+  is reachable. With a 4:3 guest on a 16:9 screen the side bars belong to
+  the edges, so the guest's cursor moves slightly faster than the hand;
+  guests that draw their own cursor (Windows XP, 9x) look right.
+- **The guest is offered the screen's resolution**: the display device's
+  EDID (`xres`/`yres` on VGA and virtio-vga; VGA memory grows to fit).
+  Linux and Windows 7+ guests start at the native resolution and fill the
+  screen unscaled. Cirrus (XP/9x profiles) has no EDID; those guests keep
+  the resolution set inside them and are scaled.
+- **Without a GPU** (basic graphics, or no render node) Mesa renders the
+  window in software (`LIBGL_ALWAYS_SOFTWARE=1`): in testing, Mesa's EGL
+  crashed QEMU's 2D renderer when the guest changed resolution on such a
+  machine.
+- `rehome.gl=off` on the kernel command line (edit the boot entry with `e`
+  in the boot menu) goes back to the 2D path, should a GPU's OpenGL driver
+  misbehave.
+- **Tested** on an emulated 1920×1080 computer without a GPU: a guest
+  switching to 1024×768 is shown full height, centred, 4:3 (checked by
+  `tests/integration/test_appliance.py`), and QEMU survives guest mode
+  changes. The pointer mapping follows from QEMU's and sdl2-compat's
+  source; measuring it needs a guest that drives the USB tablet, which was
+  too slow to boot inside the emulated computer.

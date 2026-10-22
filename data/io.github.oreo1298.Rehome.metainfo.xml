@@ -34,6 +34,11 @@
     <control>pointing</control>
   </supports>
   <releases>
+    <release version="0.2.1" date="2026-10-22">
+      <description>
+        <p>Appliances: the VM fills the screen and the pointer reaches all of it; modern guests get the screen's native resolution.</p>
+      </description>
+    </release>
     <release version="0.2.0" date="2026-10-21">
       <description>
         <p>Appliances: turn a VM into a drive image that boots a computer straight into it, full screen, with a hidden maintenance console.</p>

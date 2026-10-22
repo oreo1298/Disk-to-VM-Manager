@@ -11,7 +11,7 @@
 %global __brp_python_bytecompile %{nil}
 
 Name:           rehome
-Version:        0.2.0
+Version:        0.2.1
 Release:        1%{?dist}
 Summary:        Turn installed operating systems into QEMU/KVM virtual machines
 License:        GPL-3.0-or-later
@@ -139,6 +139,10 @@ python3 packaging/layout.py install \
 %{_datadir}/icons/hicolor/symbolic/apps/io.github.oreo1298.Rehome-symbolic.svg
 
 %changelog
+* Thu Oct 22 2026 Rehome contributors - 0.2.1-1
+- Appliances: the VM fills the screen and the pointer reaches all of it; modern
+  guests get the screen's native resolution; touchscreens stay with the appliance.
+
 * Wed Oct 21 2026 Rehome contributors - 0.2.0-1
 - Appliances: build a drive image that boots a computer straight into a VM,
   full screen, with a maintenance console (rehome appliance build).

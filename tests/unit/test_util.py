@@ -36,3 +36,22 @@ def test_toml_roundtrip(tmp_path):
     expected = dict(data)
     expected.pop("skipped")
     assert back == expected
+
+
+def test_default_route_detection(tmp_path):
+    from rehome.vm import runner
+    head = "Iface\tDestination\tGateway \tFlags\tRefCnt\tUse\tMetric\tMask\t\tMTU\tWindow\tIRTT\n"
+    (tmp_path / "route").write_text(head + "wlan0\t0001A8C0\t00000000\t0001\t0\t0\t600\t00FFFFFF\t0\t0\t0\n")
+    assert not runner.has_default_route(tmp_path)               # a local network only
+    (tmp_path / "route").write_text(head + "wlan0\t00000000\t0101A8C0\t0003\t0\t0\t600\t00000000\t0\t0\t0\n")
+    assert runner.has_default_route(tmp_path)
+    (tmp_path / "route").write_text(head)
+    (tmp_path / "ipv6_route").write_text(
+        "00000000000000000000000000000000 00 00000000000000000000000000000000 00 "
+        "00000000000000000000000000000000 ffffffff 00000001 00000000 00200200       lo\n")
+    assert not runner.has_default_route(tmp_path)               # "unreachable" on lo
+    with open(tmp_path / "ipv6_route", "a") as f:
+        f.write("00000000000000000000000000000000 00 00000000000000000000000000000000 00 "
+                "fe800000000000000000000000000001 00000258 00000001 00000000 00000003    wlan0\n")
+    assert runner.has_default_route(tmp_path)
+    assert not runner.has_default_route(tmp_path / "missing")

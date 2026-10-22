@@ -34,6 +34,11 @@
     <control>pointing</control>
   </supports>
   <releases>
+    <release version="0.3.1" date="2026-10-22">
+      <description>
+        <p>Appliances: the VM gets network through the computer's Wi-Fi even when it starts before the Wi-Fi is connected; a laptop's built-in camera, fingerprint reader and Bluetooth stay with the appliance (giving them to Windows XP VMs could crash them); when the VM stops unexpectedly, the maintenance console says why.</p>
+      </description>
+    </release>
     <release version="0.3.0" date="2026-10-22">
       <description>
         <p>Choose where disk images are stored, for example on a second drive. Replace a VM's disk with another image or a new empty disk. Installer ISOs that libosinfo does not know (new releases, derivatives such as Omarchy) are recognised from their files, and the detected system can be changed in the New VM wizard.</p>

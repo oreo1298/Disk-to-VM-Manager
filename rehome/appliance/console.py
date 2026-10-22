@@ -190,24 +190,37 @@ def usb_devices() -> None:
     from rehome.vm import usb
     while True:
         settings = runtime.load_settings()
-        excluded = set(settings.get("usb", {}).get("exclude", []))
+        prefs = settings.get("usb", {})
+        excluded, included = set(prefs.get("exclude", [])), set(prefs.get("include", []))
         devs = usb.list_host_devices()
         system_paths = runtime._system_drive_paths()
         _clear()
         print("USB devices. Plugged-in devices are given to the VM automatically, except:\n"
               "keyboards and mice (they reach the VM through its screen), the drive the\n"
-              "appliance runs from, network adapters, and devices you exclude here.\n")
+              "appliance runs from, network adapters, devices built into the computer,\n"
+              "Bluetooth adapters, and devices you exclude here.\n")
+        reasons = []
         for i, d in enumerate(devs, start=1):
-            why = runtime.usb_reason_to_skip(d, runtime._sysfs_dir(d), system_paths, excluded)
+            why = runtime.usb_reason_to_skip(d, runtime._sysfs_dir(d), system_paths, excluded,
+                                             included=included)
+            reasons.append(why)
             print(f"  {i:2}  {d.vendor_id}:{d.product_id}  {d.label[:40]:40}  "
                   f"{'stays here: ' + why if why else 'to the VM'}")
         c = _ask("\n  Number to exclude/include (Enter: back): ")
         if not c.isdigit() or not 1 <= int(c) <= len(devs):
             return
-        d = devs[int(c) - 1]
+        d, why = devs[int(c) - 1], reasons[int(c) - 1]
         ident = f"{d.vendor_id}:{d.product_id}"
-        excluded ^= {ident}
-        settings.setdefault("usb", {})["exclude"] = sorted(excluded)
+        if ident in included:
+            included.discard(ident)
+        elif why in (runtime.BUILT_IN, runtime.BLUETOOTH):
+            included.add(ident)
+        elif why and ident not in excluded:
+            _pause(f"{d.label} cannot be given to the VM ({why.split(' (')[0]}). Press Enter.")
+            continue
+        else:
+            excluded ^= {ident}
+        settings["usb"] = {"exclude": sorted(excluded), "include": sorted(included)}
         runtime.save_settings(settings)
         shutil.chown(runtime.SETTINGS, "rehome", "rehome")
 

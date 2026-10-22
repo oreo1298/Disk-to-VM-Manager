@@ -260,6 +260,11 @@ def kiosk() -> int:
     # kiosk window needs no decorations anyway.
     env.update(SDL_VIDEODRIVER="wayland", SDL_VIDEO_WAYLAND_ALLOW_LIBDECOR="0",
                GDK_BACKEND="wayland")
+    # The VM's NAT: QEMU's own (slirp), not passt. The VM usually starts before the
+    # Wi-Fi is connected, and the network can change while it runs; passt fixes the
+    # guest's addresses when it starts (link-local ones without a connection), while
+    # slirp gives the guest a fixed private network and follows the host's connection.
+    env["REHOME_NO_PASST"] = "1"
     if not gpu:
         # No GPU acceleration (basic graphics, or a display without a render node):
         # wlroots refuses software OpenGL, so it uses its CPU renderer directly, and
@@ -299,6 +304,9 @@ def kiosk() -> int:
 def session() -> int:
     from rehome.vm import runner
     from rehome.vm.qmp import QMP
+    # What the agents do (USB devices given to the VM...) goes to the journal, for
+    # "Save diagnostics".
+    logging.getLogger("rehome.appliance").setLevel(logging.INFO)
     try:
         cfg = the_vm()
         limits = _read_json(LIMITS) or {}
@@ -315,9 +323,11 @@ def session() -> int:
         return 1
     stop = threading.Event()
     conf = load_config()
+    given: dict[str, object] = {}                 # USB devices the VM has now
     agents = [threading.Thread(target=power_button_agent, args=(cfg, stop), daemon=True)]
     if conf.get("kiosk", {}).get("usb_auto", True):
-        agents.append(threading.Thread(target=usb_agent, args=(cfg, stop), daemon=True))
+        agents.append(threading.Thread(target=usb_agent, args=(cfg, stop),
+                                       kwargs={"attached": given}, daemon=True))
     for a in agents:
         a.start()
     reason = ""
@@ -346,10 +356,22 @@ def session() -> int:
     result = outcome_for(reason)
     if result["outcome"] == "error" and not result.get("message"):
         log_tail = runner._tail(cfg.dir / "logs" / "qemu.log")
-        msg, _fix = runner.explain_qemu_failure(log_tail)
-        result.update(message=msg or "The VM stopped unexpectedly.", details=log_tail)
+        result.update(message=crash_message(runner.qemu_crash_line(log_tail),
+                                            [d.label for d in given.values()]),
+                      details=log_tail)
     _write_json(RESULT, result)
     return 0
+
+
+def crash_message(qemu_line: str, usb_labels: list[str]) -> str:
+    """For the maintenance console: QEMU itself stopped while the VM was running."""
+    msg = "The VM stopped unexpectedly: QEMU, the program that runs it, quit."
+    if qemu_line:
+        msg += f" Its last message: \"{qemu_line}\""
+    if usb_labels:
+        msg += " USB devices the VM had: " + ", ".join(usb_labels) + \
+            " (exclude one in USB devices if the problem comes back)."
+    return msg + " Save diagnostics to a USB stick to report it."
 
 
 def outcome_for(reason: str) -> dict:
@@ -470,57 +492,90 @@ def _input_kinds(sysdir: Path, udev_data: Path = UDEV_DATA) -> set[str]:
     return kinds
 
 
+# Devices that stay with the appliance unless included in the maintenance console.
+BUILT_IN = "built into the computer (camera, fingerprint reader...): include it to give it to the VM"
+BLUETOOTH = "Bluetooth adapter: include it to give it to the VM"
+
+
+def _read(p: Path) -> str:
+    try:
+        return p.read_text().strip()
+    except OSError:
+        return ""
+
+
+def _built_in(sysdir: Path) -> bool:
+    """Wired inside the computer, by the firmware's description of its USB ports."""
+    return (_read(sysdir / "removable") == "fixed"
+            or _read(sysdir / "port" / "connect_type") == "hardwired")
+
+
 def usb_reason_to_skip(dev, sysdir: Path | None, system_paths: list[str],
-                       excluded: set[str], udev_data: Path = UDEV_DATA) -> str:
+                       excluded: set[str], udev_data: Path = UDEV_DATA,
+                       included: set[str] = frozenset()) -> str:
     """Why a USB device stays with the appliance ("" = give it to the VM)."""
-    if f"{dev.vendor_id}:{dev.product_id}" in excluded:
+    ident = f"{dev.vendor_id}:{dev.product_id}"
+    if ident in excluded:
         return "excluded in the maintenance console"
     if sysdir is None:
         return "gone"
     real = os.path.realpath(sysdir)
     if any(p.startswith(real + "/") for p in system_paths):
         return "the drive the appliance runs from"
+    bluetooth = False
     for intf in sysdir.glob(f"{sysdir.name}:*"):
-        try:
-            cls = (intf / "bInterfaceClass").read_text().strip()
-            sub = (intf / "bInterfaceSubClass").read_text().strip()
-            proto = (intf / "bInterfaceProtocol").read_text().strip()
-        except OSError:
-            continue
+        cls = _read(intf / "bInterfaceClass")
+        sub = _read(intf / "bInterfaceSubClass")
+        proto = _read(intf / "bInterfaceProtocol")
         if cls == "03" and sub == "01" and proto in ("01", "02"):
             return "keyboard or mouse (they reach the VM through its screen)"
         if (intf / "net").exists():
             return "network adapter (the appliance's network connection)"
+        bluetooth |= (cls, sub, proto) == ("e0", "01", "01")
     if set(POINTER_OR_KEYBOARD) & _input_kinds(sysdir, udev_data):
         return "keyboard, mouse, touchpad, touchscreen or pen tablet (they reach the VM " \
                "through its screen)"
+    if ident in included:
+        return ""
+    # A laptop's own camera, fingerprint reader and Bluetooth are not "plugged in", and
+    # giving them away has crashed VMs: Bluetooth chips re-enumerate when the guest
+    # resets them, and QEMU's USB 1.1 controller (Windows XP and older) aborts on that.
+    if _built_in(sysdir):
+        return BUILT_IN
+    if bluetooth:
+        return BLUETOOTH
     return ""
 
 
-def usb_agent(cfg, stop: threading.Event, interval: float = 1.0) -> None:
+def usb_agent(cfg, stop: threading.Event, interval: float = 1.0,
+              attached: dict | None = None) -> None:
     """Give USB devices to the VM as they are plugged in (and those present at start)."""
     from rehome.vm import usb
     if cfg.usb.controller == "none":
         log.warning("%s has no USB controller; USB devices stay with the appliance", cfg.name)
         return
-    attached: dict[str, object] = {}
+    attached = {} if attached is None else attached
     tried: set[str] = set()
     system_paths = _system_drive_paths()
     while not stop.is_set():
-        excluded = set(load_settings().get("usb", {}).get("exclude", []))
+        prefs = load_settings().get("usb", {})
+        excluded, included = set(prefs.get("exclude", [])), set(prefs.get("include", []))
         present = {d.key: d for d in usb.list_host_devices()}
         for key, dev in present.items():
             if key in attached or key in tried:
                 continue
             tried.add(key)
-            why = usb_reason_to_skip(dev, _sysfs_dir(dev), system_paths, excluded)
+            why = usb_reason_to_skip(dev, _sysfs_dir(dev), system_paths, excluded,
+                                     included=included)
             if why:
-                log.info("USB %s stays with the appliance: %s", dev.label, why)
+                log.info("USB %s (%s:%s) stays with the appliance: %s", dev.label,
+                         dev.vendor_id, dev.product_id, why)
                 continue
             try:
                 usb.attach(cfg, dev, fd_provider=_open_usb)
                 attached[key] = dev
-                log.info("USB %s given to the VM", dev.label)
+                log.info("USB %s (%s:%s, %s Mbit/s) given to the VM", dev.label,
+                         dev.vendor_id, dev.product_id, dev.speed or "?")
             except RehomeError as e:
                 log.warning("USB %s: %s %s", dev.label, e.message, e.details or "")
         for key in list(attached):

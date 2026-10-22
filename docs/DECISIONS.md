@@ -679,3 +679,45 @@ drive, and switch an existing VM's disk for another one.
 - **Checkpoints and added disks.** Reverting (VM off) to a checkpoint
   taken before a disk was added leaves that disk as it is; it used to fail
   because the new disk lacks the checkpoint.
+
+## D32. Appliance: QEMU's own NAT; built-in USB devices stay; crash reports
+
+Reported from a ThinkPad X1 Carbon: a Windows 11 appliance had no network
+although Wi-Fi was connected in the maintenance console; a Windows XP
+appliance reached its desktop, then fell back to the maintenance console
+after a few seconds.
+
+- **Network.** The kiosk starts the VM within seconds of power-on, before
+  the Wi-Fi is associated and has an address. passt reads the host's
+  addresses once, at start; without a connection it enters "local mode"
+  and hands the guest `169.254.2.1/16` (Windows: no internet) for the
+  whole session. Reproduced with the appliance's passt (git 2026-01-20)
+  and a disk-less VM in an offline network namespace: iPXE got
+  `169.254.2.1`; with QEMU's own NAT (slirp) `10.0.2.15`, gateway
+  `10.0.2.2`. slirp gives the guest a fixed private network and opens
+  host sockets per connection, so it follows the host's connection as it
+  comes and goes. The appliance always uses it (`REHOME_NO_PASST=1`);
+  on desktops passt is still used, unless the computer has no default
+  route when the VM starts.
+- **USB.** The USB agent gave every device to the VM, including a
+  laptop's built-in camera, fingerprint reader and Bluetooth. Windows 11
+  gets them on xHCI; the XP profile has QEMU's USB 1.1 controller (UHCI),
+  whose queueing code asserts (`uhci_queue_fill`) when a passed-through
+  device completes a transfer synchronously, which happens when it
+  disconnects; Intel Bluetooth chips re-enumerate when a driver resets
+  them, which XP does after logon. This is the most likely cause of the
+  XP crash (not confirmed: no log yet). Built-in devices (the kernel's
+  `removable = fixed` or port `connect_type = hardwired`, from the
+  firmware's port descriptions) and Bluetooth adapters now stay with the
+  appliance unless included in the maintenance console.
+- **Crash reports.** A QEMU crash while the VM ran was explained with
+  start-up messages ("QEMU refused to start the VM"). The console now
+  says that QEMU quit, quotes its last error line from this run, and lists
+  the USB devices the VM had; the USB agent's decisions are in the
+  journal (saved with the diagnostics).
+- **Covered by** `tests/integration/test_appliance.py`: the test VM uses the
+  XP profile's hardware (Cirrus, AC97 through the computer's sound card
+  with ALSA, UHCI with a tablet, RTL8139 on NAT), a plugged-in USB stick
+  still reaches the VM, QEMU's command line has `-netdev user` and no
+  passt runs, and killing QEMU opens the maintenance console with the new
+  message.

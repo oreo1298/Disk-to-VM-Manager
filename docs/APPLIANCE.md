@@ -82,6 +82,7 @@ At power-on:
 | Shut down the VM | The computer turns off. |
 | Press the power button | The VM is asked to shut down (like pressing a PC's power button); then the computer turns off. Holding it forces the computer off. |
 | Plug in a USB device | It is given to the VM, except keyboards and mice (they already reach the VM), network adapters, and the drive the appliance runs from. |
+| Built-in devices (a laptop's camera, fingerprint reader, Bluetooth) | They stay with the appliance; include one in the maintenance console's **USB devices** to give it to the VM. |
 | Press Esc while the computer starts | The boot menu appears. |
 
 ### Screen and mouse
@@ -96,6 +97,24 @@ If the picture is garbled or the screen stays black with a particular
 graphics card, press Esc while the computer starts, select the **Start**
 entry, press `e`, add `rehome.gl=off` to the line that starts with `linux`,
 and press F10; or choose **with basic graphics**.
+
+### Network
+
+The VM has a wired network card (Windows shows "Ethernet", never a list of
+Wi-Fi networks). Its connection goes out through the computer's own
+wired or Wi-Fi connection, whichever is up, through NAT. Connect the
+computer to Wi-Fi once in the maintenance console (**Network and Wi-Fi**);
+it reconnects by itself on later starts. The VM can start before the
+connection is up, or while it changes; it gets online as soon as the
+computer does.
+
+### If the VM stops unexpectedly
+
+The maintenance console opens and says what happened: for a crash of
+QEMU, the program that runs the VM, its last message and the USB devices
+the VM had. **Save diagnostics to a USB stick** collects the logs for a
+report. If the crash comes back with a particular USB device, exclude it
+in **USB devices**.
 
 ### The boot menu
 
@@ -148,9 +167,12 @@ compositor) showing QEMU's own window. It is a normal Rehome VM: the same
 - UEFI VMs start with fresh UEFI settings (Windows boots from the default
   path).
 - Shared folders and PCI pass-through settings of the VM are left out.
-- Tested so far in emulated BIOS and UEFI computers with a FreeDOS VM (see
-  [TESTING.md](TESTING.md)), not yet on real laptops or desktops, with
-  Wi-Fi or sound output, or with a Windows guest. Windows XP and later
-  use an absolute pointer (a USB tablet) that needs no mouse capture; DOS
-  and Windows 9x guests with a PS/2 mouse rely on SDL's mouse capture,
-  which is untested in the kiosk.
+- Tested automatically in emulated BIOS and UEFI computers with a FreeDOS
+  VM on the Windows XP profile's virtual hardware (see
+  [TESTING.md](TESTING.md)). Reported from a real laptop (ThinkPad X1
+  Carbon): an Omarchy and a Windows 11 VM run full screen with the whole
+  screen reachable by the pointer; the Windows 11 VM had no network and a
+  Windows XP VM stopped after reaching its desktop, both addressed in
+  0.3.1 ([DECISIONS.md](DECISIONS.md) D32) but not yet re-checked on that
+  laptop. DOS and Windows 9x guests with a PS/2 mouse rely on SDL's mouse
+  capture, which is untested in the kiosk.

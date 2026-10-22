@@ -11,7 +11,7 @@
 %global __brp_python_bytecompile %{nil}
 
 Name:           rehome
-Version:        0.3.0
+Version:        0.3.1
 Release:        1%{?dist}
 Summary:        Turn installed operating systems into QEMU/KVM virtual machines
 License:        GPL-3.0-or-later
@@ -139,6 +139,10 @@ python3 packaging/layout.py install \
 %{_datadir}/icons/hicolor/symbolic/apps/io.github.oreo1298.Rehome-symbolic.svg
 
 %changelog
+* Thu Oct 22 2026 Rehome contributors - 0.3.1-1
+- Appliances: network through Wi-Fi that connects after the VM started; built-in
+  USB devices and Bluetooth stay with the appliance; clearer crash reports.
+
 * Thu Oct 22 2026 Rehome contributors - 0.3.0-1
 - Choose where disk images are stored (Preferences, per disk, rehome disk folder).
 - Replace a VM's disk with another image or a new empty disk (rehome disk replace).

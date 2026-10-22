@@ -275,3 +275,76 @@ def test_units_call_existing_commands():
                     assert cmd in cmd_appliance.INSIDE, f"{u.name}: {value}"
     wrapper = paths.data_files_dir() / "appliance/rootfs/usr/local/bin/rehome"
     assert wrapper.read_text().startswith("#!/bin/sh")
+
+
+def test_built_in_and_bluetooth_usb_devices_stay_unless_included(tmp_path):
+    dev = usb.UsbHostDevice(bus=1, devnum=5, vendor_id="8087", product_id="0aaa")
+    camera = _usbdev(tmp_path, "1-5", [("0e", "01", "00"), ("0e", "02", "00")])
+    (camera / "removable").write_text("fixed\n")
+    finger = _usbdev(tmp_path, "1-6", [("ff", "00", "00")])
+    (finger / "removable").write_text("unknown\n")
+    (finger / "port").mkdir()
+    (finger / "port" / "connect_type").write_text("hardwired\n")
+    dongle = _usbdev(tmp_path, "1-7", [("e0", "01", "01"), ("e0", "01", "01")])
+    (dongle / "removable").write_text("removable\n")
+    stick = _usbdev(tmp_path, "1-8", [("08", "06", "50")])
+    (stick / "removable").write_text("removable\n")
+    (stick / "port").mkdir()
+    (stick / "port" / "connect_type").write_text("hotplug\n")
+    assert runtime.usb_reason_to_skip(dev, camera, [], set()) == runtime.BUILT_IN
+    assert runtime.usb_reason_to_skip(dev, finger, [], set()) == runtime.BUILT_IN
+    assert runtime.usb_reason_to_skip(dev, dongle, [], set()) == runtime.BLUETOOTH
+    assert runtime.usb_reason_to_skip(dev, stick, [], set()) == ""
+    # Included in the maintenance console: given to the VM after all.
+    for d in (camera, finger, dongle):
+        assert runtime.usb_reason_to_skip(dev, d, [], set(), included={"8087:0aaa"}) == ""
+    # Excluding wins, and a built-in keyboard can never be included.
+    assert "excluded" in runtime.usb_reason_to_skip(dev, camera, [], {"8087:0aaa"},
+                                                    included={"8087:0aaa"})
+    kbd = _usbdev(tmp_path, "1-9", [("03", "01", "01")])
+    (kbd / "removable").write_text("fixed\n")
+    assert "keyboard" in runtime.usb_reason_to_skip(dev, kbd, [], set(), included={"8087:0aaa"})
+
+
+def test_crash_message_names_qemus_error_and_the_usb_devices():
+    from rehome.vm import runner
+    log = ("=== 2026-10-22 10:00:00 starting Old PC (kvm) ===\n$ qemu-system-x86_64 -name x\n"
+           "warning: something Rehome noted\n"
+           "qemu-system-x86_64: warning: host doesn't support requested feature\n"
+           "qemu-system-x86_64: ../hw/usb/hcd-uhci.c:967: uhci_queue_fill: Assertion "
+           "`ret == TD_RESULT_ASYNC_START' failed.\n")
+    line = runner.qemu_crash_line(log)
+    assert line.startswith("qemu-system-x86_64: ../hw/usb/hcd-uhci.c:967")
+    # Only this run counts; a quiet crash (a signal) has no line.
+    assert runner.qemu_crash_line(log + "=== 2026-10-22 10:05:00 starting Old PC (kvm) ===\n"
+                                        "$ qemu-system-x86_64 -name x\n") == ""
+    msg = runtime.crash_message(line, ["Intel Bluetooth"])
+    assert "uhci_queue_fill" in msg and "Intel Bluetooth" in msg and "diagnostics" in msg
+    assert "Its last message" not in runtime.crash_message("", [])
+
+
+def test_kiosk_uses_qemus_own_nat(monkeypatch):
+    """The VM starts before Wi-Fi is up: passt would hand the guest link-local addresses."""
+    import types
+    cfg = types.SimpleNamespace(name="Old PC", machine=types.SimpleNamespace(memory_mib=512, cpus=1))
+    seen = {}
+    monkeypatch.setattr(runtime, "load_config", lambda: {"kiosk": {"countdown": 0}})
+    monkeypatch.setattr(runtime, "the_vm", lambda: cfg)
+    monkeypatch.setattr(runtime, "cmdline", lambda text=None: {})
+    monkeypatch.setattr(runtime, "_disk_numbers", lambda c: (10 * 2**30, 0))
+    monkeypatch.setattr(runtime, "_say", lambda lines: None)
+    monkeypatch.setattr(runtime, "_wait_key", lambda s: "")
+    monkeypatch.setattr(runtime, "_write_json", lambda path, data: seen.setdefault(path.name, data))
+    monkeypatch.setattr(runtime, "_read_json", lambda path: {"outcome": "poweroff"})
+    monkeypatch.setattr(runtime.hardware, "gather", lambda: None)
+    monkeypatch.setattr(runtime.hardware, "start_checks",
+                        lambda *a, **k: types.SimpleNamespace(notes=[]))
+    monkeypatch.setattr(runtime.hardware, "has_gpu_acceleration", lambda: True)
+    monkeypatch.setattr(runtime.hardware, "screen_size", lambda: (1920, 1080))
+
+    def run(argv, env=None, check=False):
+        seen["env"] = env
+        return types.SimpleNamespace(returncode=0)
+    monkeypatch.setattr(runtime.subprocess, "run", run)
+    assert runtime.kiosk() == 0
+    assert seen["env"]["REHOME_NO_PASST"] == "1"

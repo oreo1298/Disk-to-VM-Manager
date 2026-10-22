@@ -209,6 +209,25 @@ def _audio_backend(cfg: VMConfig, caps) -> str:
     return "none"
 
 
+def has_default_route(proc_net: Path = Path("/proc/net")) -> bool:
+    """The host has an IPv4 or IPv6 default route (it is connected to a network)."""
+    try:
+        for line in (proc_net / "route").read_text().splitlines()[1:]:
+            f = line.split()
+            if len(f) > 2 and f[1] == "00000000" and f[0] != "lo":
+                return True
+    except OSError:
+        pass
+    try:
+        for line in (proc_net / "ipv6_route").read_text().splitlines():
+            f = line.split()
+            if len(f) == 10 and f[0] == "0" * 32 and f[1] == "00" and f[9] != "lo":
+                return True
+    except OSError:
+        pass
+    return False
+
+
 def _has_sound_card() -> bool:
     """ALSA has a card (``/dev/snd`` alone may only hold the timer and sequencer)."""
     try:
@@ -293,6 +312,12 @@ def start(cfg: VMConfig, *, headless: bool = False, paused: bool = False,
     if cfg.shares:
         opts.virtiofsd = tools_mod.virtiofsd_path()
     opts.passt = which("passt") if os.environ.get("REHOME_NO_PASST") != "1" else None
+    if opts.passt and any(n.mode == "nat" for n in cfg.nics) and not has_default_route():
+        # passt copies the host's addresses for the guest when it starts; with no
+        # connection yet it falls back to a link-local address and no usable DNS for
+        # the whole session. QEMU's own NAT keeps working once the host gets online.
+        log.info("no network connection yet; using QEMU's built-in NAT instead of passt")
+        opts.passt = None
     opts.audio_backend = _audio_backend(cfg, caps)
     saved = saved_state_path(cfg)
     if restore and saved.exists():
@@ -442,6 +467,31 @@ def _tail(path: Path, lines: int = 30) -> str:
         return "\n".join(path.read_text(errors="replace").splitlines()[-lines:])
     except OSError:
         return ""
+
+
+CRASH_WORDS = ("assertion", "abort", "segmentation", "core dumped", "fatal", "bug:", "error",
+               "failed", "terminating on signal", "killed")
+
+
+def qemu_crash_line(log_text: str) -> str:
+    """The last line QEMU printed that says why it stopped while running ("" if none).
+
+    Only this run's lines count (after Rehome's "=== ... starting" header), and not
+    Rehome's own notes or QEMU's warnings.
+    """
+    lines = log_text.splitlines()
+    for i in range(len(lines) - 1, -1, -1):
+        if lines[i].startswith("=== "):
+            lines = lines[i + 1:]
+            break
+    for line in reversed(lines):
+        text = line.strip()
+        low = text.lower()
+        if not text or text.startswith(("$ ", "warning: ", "note: ")) or "warning:" in low:
+            continue
+        if any(w in low for w in CRASH_WORDS):
+            return text[:300]
+    return ""
 
 
 def explain_qemu_failure(log_text: str) -> tuple[str, str]:

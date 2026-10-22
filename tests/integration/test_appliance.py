@@ -138,6 +138,9 @@ class Computer:
                 # An absolute pointing device, so tests can put the pointer anywhere.
                 "-device", "usb-tablet,bus=xhci.0",
                 "-nic", "user,model=virtio-net-pci",
+                # A sound card, so the appliance plays the VM's sound through ALSA.
+                "-audiodev", "none,id=snd",
+                "-device", "ich9-intel-hda", "-device", "hda-duplex,audiodev=snd",
                 "-device", f"VGA,xres={self.SCREEN[0]},yres={self.SCREEN[1]}",
                 "-display", "none",
                 "-chardev", f"socket,id=ser,path={self.serial_sock},server=on,wait=off,"
@@ -220,8 +223,15 @@ def appliance(tmp_path_factory):
     disk = work / "disk.qcow2"
     disks.convert(str(img), str(disk), src_fmt="raw")
     cfg = create.create(create.NewVMSpec(name="FreeDOS Appliance", os="freedos1.3",
-                                         existing_disk=str(disk), network="none"))
-    cfg.usb.controller = "piix3-usb-uhci"       # the DOS profile has none; USB is tested here
+                                         existing_disk=str(disk), network="nat"))
+    # The virtual hardware of the Windows XP profile: Cirrus graphics, AC97 sound,
+    # USB 1.1 (UHCI) with a tablet, an RTL8139 network card on NAT.
+    cfg.display.device = "cirrus-vga"
+    cfg.sound.device = "AC97"
+    cfg.usb.controller = "piix3-usb-uhci"
+    cfg.input.pointer = "usb-tablet"
+    for nic in cfg.nics:
+        nic.model = "rtl8139"
     library.save(cfg)
     out = work / "appliance.qcow2"
     build.build(cfg, build.Options(output=out, fmt="qcow2", maintenance_password=PASSWORD,
@@ -315,6 +325,13 @@ def test_boots_on_bios_and_runs_the_vm(appliance, tmp_path):
         _, display = sh.run("grep -o -- '-display [^ ]*' /var/lib/rehome/data/vms/*/logs/qemu.log "
                             "| tail -1")
         assert "sdl,gl=on" in display, display
+        # QEMU's own NAT (the VM starts before Wi-Fi is up; passt would hand out
+        # link-local addresses), and the computer's sound card through ALSA.
+        _, log = sh.run("tail -c 20000 /var/lib/rehome/data/vms/*/logs/qemu.log | "
+                        "grep -o -- '-netdev [^ ]*\\|-audiodev [^ ]*' | tail -2")
+        assert "-netdev user," in log and "-audiodev alsa," in log, log
+        rc, _ = sh.run("pgrep -x passt")
+        assert rc != 0
         # A 4:3 guest mode on the 16:9 screen: full height, centred, nothing cut off.
         sh.run(f"rehome type {cfg.id} vbe && rehome send-keys {cfg.id} ret")
         time.sleep(30 * SLOW)
@@ -367,6 +384,26 @@ def test_boots_on_bios_and_runs_the_vm(appliance, tmp_path):
                 break
             assert time.monotonic() < deadline
             time.sleep(10)
+        # QEMU dies while the VM runs: the maintenance console says so, and which USB
+        # devices the VM had.
+        deadline = time.monotonic() + 120 * SLOW
+        while True:
+            _, usb = sh.run(f"rehome usb list {cfg.id}")
+            if "connected to the VM" in usb:
+                break
+            assert time.monotonic() < deadline, usb
+            time.sleep(5)
+        sh.run("pkill -ABRT -x qemu-system-x86_64 || pkill -ABRT -x qemu-system-x86")
+        deadline = time.monotonic() + 180 * SLOW
+        while True:
+            _, st = sh.run("systemctl is-active rehome-maintenance")
+            if st.strip() == "active":
+                break
+            assert time.monotonic() < deadline, st
+            time.sleep(5)
+        _, msg = sh.run("cat /run/rehome/console-message")
+        assert "QEMU, the program that runs it, quit" in msg, msg
+        assert "USB devices the VM had" in msg, msg
     finally:
         pc.stop()
 

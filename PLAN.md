@@ -122,6 +122,12 @@ Windows XP and older need:
 - A6 `rehome appliance build` (CLI and GUI), docs, and an integration test
   that builds an appliance and boots it in QEMU.
 
+Status (0.2.0): phase 1 is done. Verified by
+`tests/integration/test_appliance.py` with a FreeDOS VM on emulated BIOS
+and UEFI computers. Not verified yet: real hardware (GPUs, laptops, Wi-Fi,
+sound output), a Windows guest inside an appliance, and relative mouse
+grabbing for DOS/9x guests under SDL.
+
 Later phases: GPU pass-through on computers with two GPUs (dedicated GPU to
 the VM, integrated one for the appliance), with automatic fallback to
 emulated graphics and driver staging; 3D acceleration for 9x/XP without

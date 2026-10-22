@@ -7,6 +7,7 @@
 | Packaging | `tests/packaging` | Docker or Podman, network | 10–30 min |
 | GUI tour | `tests/gui/tour.sh` | Xvfb, dbus-run-session | 1 min |
 | Real-system boot tests | `tests/boot` | **your own disk images** (see below) | 5–20 min per image |
+| Appliance | `tests/integration/test_appliance.py` | the integration tools, network once; opt in with `REHOME_TEST_APPLIANCE=1` | 15 min with KVM; about 1 h without |
 
 ```sh
 python3 -m pytest tests/unit                       # always
@@ -140,3 +141,21 @@ part of the work and no KVM later, so both paths were exercised.
 - Automatic installation of Fedora, Debian, openSUSE and Ubuntu Desktop:
   the answer media are generated and checked, but the installers were not
   run, because their download sites were blocked.
+
+## The appliance test
+
+`REHOME_TEST_APPLIANCE=1 python3 -m pytest tests/integration/test_appliance.py`
+builds an appliance from a FreeDOS VM and boots it in QEMU twice, as a BIOS
+and as a UEFI computer with a USB stick plugged in. Through a root shell on
+the serial console (the test build sets a maintenance password) and OCR of
+the screen it checks: the image layout (partitions, both boot loaders, new
+UUIDs); first boot (data partition grown, hardware report); the VM on
+screen; GRUB's `recordfail` cleared once the VM shows; the USB stick handed
+to the VM; the power button reaching the appliance; and, after choosing the
+maintenance entry for the next boot, the console after a password login on
+the screen and starting the VM from it.
+
+The base system (about 1.2 GB of downloads) is cached in
+`~/.cache/rehome/appliance` (`REHOME_APPLIANCE_CACHE` overrides it) and
+shared with your own builds. Without KVM the VM inside the appliance is
+emulated inside an emulated computer, so timeouts are scaled up.

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import concurrent.futures
 import lzma
+import os
 import re
 import threading
 import urllib.parse
@@ -63,7 +64,9 @@ def load_release(path: Path | None = None) -> Release:
 
 
 def cache_dir() -> Path:
-    return paths.ensure(paths.cache_dir() / "appliance")
+    """Downloads and the base system (``REHOME_APPLIANCE_CACHE`` overrides; tests share one)."""
+    env = os.environ.get("REHOME_APPLIANCE_CACHE")
+    return paths.ensure(Path(env) if env else paths.cache_dir() / "appliance")
 
 
 def base_tarball(release: Release, progress=None, cancel=None) -> Path:

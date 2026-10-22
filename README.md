@@ -16,7 +16,7 @@ Rehome is a Linux desktop app for QEMU/KVM. It does two jobs:
 
 Everything the GUI does is also available on the command line (`rehome --help`).
 
-> **Status: 0.1.3, early release.** The engine, CLI and GUI work, and they are
+> **Status: 0.2.0, early release.** The engine, CLI and GUI work, and they are
 > tested on synthetic disks and on real FreeDOS, ReactOS and Ubuntu guests. Real
 > Windows and 9x installations were not tested yet; see
 > [What has been tested](#what-has-been-tested).
@@ -404,13 +404,21 @@ Tested so far (details and how to re-run: [docs/TESTING.md](docs/TESTING.md)):
     verified, installed without questions, and boots to the login prompt.
 - **Packaging:** the install script and the packages, in containers. See
   [docs/PACKAGING.md](docs/PACKAGING.md).
+- **Appliances:** built without root from a FreeDOS VM, then booted in QEMU
+  as a BIOS and as a UEFI computer: the VM appears full screen, first boot
+  grows the data partition, a USB stick is handed to the VM, the power
+  button reaches the appliance, and the maintenance console works (password
+  login on the screen, starting the VM from it, powering off when the VM
+  stops).
 
 **Not tested yet:**
 
 - real Windows installations of any version,
 - real 9x and NT4/2000 installations,
 - BSDs,
-- physical disks (only loop devices).
+- physical disks (only loop devices),
+- appliances on real computers (GPUs, laptops, Wi-Fi, sound output) and with
+  a Windows guest inside.
 
 These need installation media or disks that could not be used in the build
 environment. [docs/TESTING.md](docs/TESTING.md) lists the images needed and the

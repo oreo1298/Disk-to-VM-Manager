@@ -183,6 +183,9 @@ def _ovmf() -> tuple[str, str]:
 
 @pytest.fixture(scope="module")
 def appliance(tmp_path_factory):
+    # Share the downloads and base system between runs (and with the user's cache).
+    os.environ.setdefault("REHOME_APPLIANCE_CACHE",
+                          str(Path.home() / ".cache" / "rehome" / "appliance"))
     from rehome.appliance import build
     from rehome.vm import create, disks, library
     work = tmp_path_factory.mktemp("appliance")

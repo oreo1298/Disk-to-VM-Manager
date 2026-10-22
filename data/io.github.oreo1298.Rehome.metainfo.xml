@@ -18,6 +18,7 @@
       <li>Supports physical disks, raw, E01, VHD/VHDX, VMDK, VDI and qcow2 images</li>
       <li>Embedded console with clipboard sharing, dynamic resolution and USB redirection</li>
       <li>Checkpoints, cloning, export and import</li>
+      <li>Appliances: a drive image that boots a computer straight into a VM, full screen</li>
       <li>Follows your desktop's light/dark style and accent colour</li>
     </ul>
   </description>
@@ -33,6 +34,11 @@
     <control>pointing</control>
   </supports>
   <releases>
+    <release version="0.2.0" date="2026-10-21">
+      <description>
+        <p>Appliances: turn a VM into a drive image that boots a computer straight into it, full screen, with a hidden maintenance console.</p>
+      </description>
+    </release>
     <release version="0.1.3" date="2026-10-21"/>
     <release version="0.1.2" date="2026-10-21"/>
     <release version="0.1.1" date="2026-10-21"/>

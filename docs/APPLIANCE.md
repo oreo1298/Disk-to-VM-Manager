@@ -135,3 +135,9 @@ compositor) showing QEMU's own window. It is a normal Rehome VM: the same
 - UEFI VMs start with fresh UEFI settings (Windows boots from the default
   path).
 - Shared folders and PCI pass-through settings of the VM are left out.
+- Tested so far in emulated BIOS and UEFI computers with a FreeDOS VM (see
+  [TESTING.md](TESTING.md)), not yet on real laptops or desktops, with
+  Wi-Fi or sound output, or with a Windows guest. Windows XP and later
+  use an absolute pointer (a USB tablet) that needs no mouse capture; DOS
+  and Windows 9x guests with a PS/2 mouse rely on SDL's mouse capture,
+  which is untested in the kiosk.

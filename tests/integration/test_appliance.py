@@ -214,29 +214,36 @@ def appliance(tmp_path_factory):
     from rehome.appliance import build
     from rehome.vm import create, disks, library
     work = tmp_path_factory.mktemp("appliance")
-    img = work / "freedos.img"
-    freedos.build(img)
-    from rehome.inspect import gfs
-    with gfs.session([gfs.Drive(str(img), "raw", False)]) as g:
-        g.mount("/dev/sda1", "/")
-        g.write("/VBE.COM", VBE_COM)
-    disk = work / "disk.qcow2"
-    disks.convert(str(img), str(disk), src_fmt="raw")
-    cfg = create.create(create.NewVMSpec(name="FreeDOS Appliance", os="freedos1.3",
-                                         existing_disk=str(disk), network="nat"))
-    # The virtual hardware of the Windows XP profile: Cirrus graphics, AC97 sound,
-    # USB 1.1 (UHCI) with a tablet, an RTL8139 network card on NAT.
-    cfg.display.device = "cirrus-vga"
-    cfg.sound.device = "AC97"
-    cfg.usb.controller = "piix3-usb-uhci"
-    cfg.input.pointer = "usb-tablet"
-    for nic in cfg.nics:
-        nic.model = "rtl8139"
-    library.save(cfg)
-    out = work / "appliance.qcow2"
-    build.build(cfg, build.Options(output=out, fmt="qcow2", maintenance_password=PASSWORD,
-                                   kernel_args="console=tty1 console=ttyS0,115200"))
-    return cfg, out
+    # Its own VM library: this module-wide fixture runs before the per-test one
+    # (tests/conftest.py), and must not add VMs to the real library.
+    env = pytest.MonkeyPatch()
+    env.setenv("REHOME_HOME", str(work / "home"))
+    try:
+        img = work / "freedos.img"
+        freedos.build(img)
+        from rehome.inspect import gfs
+        with gfs.session([gfs.Drive(str(img), "raw", False)]) as g:
+            g.mount("/dev/sda1", "/")
+            g.write("/VBE.COM", VBE_COM)
+        disk = work / "disk.qcow2"
+        disks.convert(str(img), str(disk), src_fmt="raw")
+        cfg = create.create(create.NewVMSpec(name="FreeDOS Appliance", os="freedos1.3",
+                                             existing_disk=str(disk), network="nat"))
+        # The virtual hardware of the Windows XP profile: Cirrus graphics, AC97 sound,
+        # USB 1.1 (UHCI) with a tablet, an RTL8139 network card on NAT.
+        cfg.display.device = "cirrus-vga"
+        cfg.sound.device = "AC97"
+        cfg.usb.controller = "piix3-usb-uhci"
+        cfg.input.pointer = "usb-tablet"
+        for nic in cfg.nics:
+            nic.model = "rtl8139"
+        library.save(cfg)
+        out = work / "appliance.qcow2"
+        build.build(cfg, build.Options(output=out, fmt="qcow2", maintenance_password=PASSWORD,
+                                       kernel_args="console=tty1 console=ttyS0,115200"))
+        yield cfg, out
+    finally:
+        env.undo()
 
 
 def _inspect(path: Path) -> dict:

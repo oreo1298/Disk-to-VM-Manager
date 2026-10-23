@@ -16,7 +16,7 @@ Rehome is a Linux desktop app for QEMU/KVM. It does two jobs:
 
 Everything the GUI does is also available on the command line (`rehome --help`).
 
-> **Status: 0.3.6, early release.** The engine, CLI and GUI work, and they are
+> **Status: 0.3.7, early release.** The engine, CLI and GUI work, and they are
 > tested on synthetic disks and on real FreeDOS, ReactOS and Ubuntu guests. Real
 > Windows and 9x installations were not tested yet; see
 > [What has been tested](#what-has-been-tested).
@@ -197,10 +197,13 @@ chosen per operating system from profiles in `data/profiles/`:
   - Repairs the BIOS boot chain when the disk was prepared on Linux:
     - a partition formatted with `mkfs.fat` ("This is not a bootable
       disk"),
-    - no active partition,
+    - no active partition, or a partition type DOS does not know,
     - an MBR without boot code.
-  - The repair uses SYSLINUX's `chain.c32`, which starts the system's own
-    `IO.SYS` or `KERNEL.SYS`.
+  - Windows 95/98 get Rehome's own boot sector, which starts their `IO.SYS`
+    the way grub4dos does. FreeDOS and MS-DOS 6 get SYSLINUX's `chain.c32`,
+    which starts their `KERNEL.SYS` or `IO.SYS`.
+  - Warns when a Windows 9x partition reaches past 128 GiB, which its IDE
+    driver cannot address.
 - **BSD**: chooses suitable hardware and reports what was found.
 
 Rehome warns about two cases and decides nothing for you:
@@ -364,7 +367,8 @@ scripts. Add `-v` to any command for technical details.
 | libguestfs is installed but has no Python bindings (Arch) | Nothing to do since 0.1.2: Rehome then uses libguestfs' C library directly. `rehome doctor` shows which way it uses. |
 | Import or inspect fails with a libguestfs "supermin" or kernel error (Debian/Ubuntu) | libguestfs needs to read the kernel image, which Debian/Ubuntu make root-only. `rehome doctor` shows the `dpkg-statoverride` command. The install script offers to run it. |
 | Windows shows `INACCESSIBLE_BOOT_DEVICE` (0x7B) | Open **Settings → Disk controller** and choose the controller the PC had (SATA/AHCI, IDE or NVMe; the import summary shows what was detected), or re-run the fixes with `rehome patch run VM`. |
-| "Make the disk bootable" failed for DOS or Windows 9x ("SYSLINUX could not be installed") | The disk's boot sector was written on Linux and Rehome replaces it with SYSLINUX. Install `syslinux` and `mtools` (on Debian/Ubuntu also `extlinux`), then run `rehome patch run VM --only dos.boot_record`. `rehome patch log VM` shows libguestfs' own error. |
+| "Make the disk bootable" failed for FreeDOS or MS-DOS ("SYSLINUX could not be installed") | The disk's boot sector was written on Linux and Rehome replaces it with SYSLINUX. Install `syslinux` and `mtools` (on Debian/Ubuntu also `extlinux`), then run `rehome patch run VM --only dos.boot_record`. `rehome patch log VM` shows libguestfs' own error. Windows 95/98 do not need SYSLINUX. |
+| Windows 98 stops at SYSLINUX's "Booting..." (VMs repaired by Rehome 0.3.5 or 0.3.6) | Update Rehome, turn the VM off and run `rehome patch run VM --only dos.boot_record`: it replaces SYSLINUX with Rehome's Windows 9x boot sector. |
 | Windows asks to be activated again | Expected: the virtual hardware differs from the PC. Reactivate with your own licence; Rehome never bypasses activation. |
 | Old Windows (9x/2000/XP) runs too fast, hangs or crashes on start | Use the profile's defaults: emulation (TCG) for 9x, at most 512 MB of RAM, a Pentium-class CPU model. |
 | The console stays black | The guest may have switched its display off. Press a key in the console, or check **Logs**. `rehome screenshot VM x.png` shows what QEMU itself sees. |

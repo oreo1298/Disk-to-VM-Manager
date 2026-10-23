@@ -102,7 +102,7 @@ def virtiofsd_path() -> str | None:
 
 def _syslinux() -> Tool:
     from rehome.patch import legacy
-    t = Tool("syslinux", "SYSLINUX", "Makes DOS and Windows 9x disks prepared on Linux bootable.",
+    t = Tool("syslinux", "SYSLINUX", "Makes FreeDOS and MS-DOS disks prepared on Linux bootable.",
              False)
     d = legacy._syslinux_modules()
     if d:

@@ -168,7 +168,7 @@ fedora = ["xorriso", "dosfstools", "mtools"]
 suse = ["xorriso", "dosfstools", "mtools"]
 
 [legacy-boot]
-label = "SYSLINUX (repairs the boot sector of DOS and Windows 9x disks; x86 only)"
+label = "SYSLINUX (repairs the boot sector of FreeDOS and MS-DOS disks; x86 only)"
 required = false
 arch = ["syslinux"]
 debian = ["syslinux", "syslinux-common", "extlinux"]

@@ -354,9 +354,9 @@ def check_tools(r: Report, h: HostInfo) -> None:
          "nbdkit")
     tool("smartctl", "Import", "Disk health (SMART)", WARN,
          "smartmontools is missing: disk health cannot be checked before import.", "smartmontools")
-    tool("syslinux", "Import", "DOS and Windows 9x boot repair", WARN,
-         "SYSLINUX is not installed: DOS and Windows 9x disks whose boot sector was written "
-         "on Linux cannot be made bootable.", "legacy-boot")
+    tool("syslinux", "Import", "DOS boot repair", WARN,
+         "SYSLINUX is not installed: FreeDOS and MS-DOS disks whose boot sector was written "
+         "on Linux cannot be made bootable (Windows 95/98 do not need it).", "legacy-boot")
     tool("mtools", "Import", "mtools", INFO,
          "mtools is not installed: SYSLINUX is installed with extlinux instead.", "media-tools")
     tool("ddrescue", "Import", "ddrescue", INFO,

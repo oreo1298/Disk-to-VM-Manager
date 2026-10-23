@@ -5,18 +5,22 @@ from __future__ import annotations
 import os
 import re
 import shutil
+import struct
 
 from rehome.errors import RehomeError
 from rehome.inspect import bootchain
 from rehome.inspect.gfs import ci_path, mounted, read_text
+from rehome.patch import bootcode
 from rehome.patch.registry import CONFIG, PatchResult, patch
 
 # Where distributions keep SYSLINUX's BIOS files (Arch, Debian/Ubuntu, Fedora/openSUSE).
 SYSLINUX_DIRS = ("/usr/lib/syslinux/bios", "/usr/lib/syslinux/modules/bios", "/usr/share/syslinux",
                  "/usr/lib/syslinux")
-SYSLINUX_MBR = ("/usr/lib/syslinux/bios/mbr.bin", "/usr/lib/syslinux/mbr/mbr.bin",
-                "/usr/share/syslinux/mbr.bin", "/usr/lib/syslinux/mbr.bin")
 CHAIN_MODULES = ("chain.c32", "libcom32.c32", "libutil.c32")
+# What an older Rehome put in /syslinux (it started Windows 9x with chain.c32, which cannot).
+SYSLINUX_FILES = (*CHAIN_MODULES, "ldlinux.c32", "ldlinux.sys", "syslinux.cfg", "extlinux.conf")
+MSLOAD = 0x800                  # the loader at the start of an MS-DOS 7 IO.SYS
+IOSYS_MAX = MSLOAD + 1024 * 512  # what rehome/patch/win9x_boot.asm can load
 
 
 def _syslinux_modules() -> str | None:
@@ -27,13 +31,45 @@ def _syslinux_modules() -> str | None:
 
 
 def _chain_loader(o) -> str | None:
-    """chain.c32 option that starts this system's DOS kernel file."""
+    """chain.c32 option that starts this system's DOS kernel file.
+
+    Not for MS-DOS 7 (Windows 95/98): chain.c32's msdos7 mode starts IO.SYS with
+    SS:BP pointing into IO.SYS instead of at the boot sector, and IO.SYS hangs.
+    Those get Rehome's own boot sector (win9x_boot.asm).
+    """
     # Paths are absolute: chain.c32 resolves them from SYSLINUX's directory.
-    if o.family == "win9x":
-        return "msdos7=/io.sys"                 # Windows 95/98/Me: MS-DOS 7.x IO.SYS
-    ver = o.version or ""
     return {"freedos": "freedos=/kernel.sys", "pcdos": "pcdos=/ibmbio.com",
-            "msdos": "msdos7=/io.sys" if ver.startswith("7") else "msdos=/io.sys"}.get(o.distro)
+            "msdos": "msdos=/io.sys"}.get(o.distro)
+
+
+def _iosys(g, root: str) -> str:
+    """What kind of IO.SYS the partition has: msdos7 (Windows 95/98, MS-DOS 7.x, which
+    Rehome's boot sector starts), winme (compressed), other, or missing."""
+    with mounted(g, root):
+        path = ci_path(g, "/IO.SYS")
+        if not path:
+            return "missing"
+        size = g.filesize(path)
+        head = g.pread(path, MSLOAD + 2, 0) if size > MSLOAD else b""
+    if head[:2] != b"MZ" or head[0x200:0x202] != b"BJ" or head[MSLOAD - 2:MSLOAD] != b"MS":
+        return "other"
+    if head[MSLOAD:MSLOAD + 2] == b"CM":
+        return "winme"
+    return "msdos7" if size <= IOSYS_MAX else "other"
+
+
+def _old_syslinux(g, root: str) -> str:
+    """The SYSLINUX configuration an older Rehome wrote on this partition, or ''."""
+    with mounted(g, root):
+        path = ci_path(g, "/syslinux/syslinux.cfg")
+        text = (read_text(g, path) or "") if path else ""
+    return text if "Written by Rehome" in text else ""
+
+
+def _write(g, device: str, data: bytes, offset: int) -> None:
+    done = 0
+    while done < len(data):
+        done += g.pwrite_device(device, data[done:], offset + done)
 
 
 @patch("dos.report", "DOS hardware", kind=CONFIG, families=("dos",))
@@ -54,6 +90,32 @@ def win9x_report(ctx) -> PatchResult:
     if m.cpu_quota_pct:
         msg += f" Windows 9x never idles the CPU, so the VM is capped at {m.cpu_quota_pct}% of one core."
     return PatchResult("", "", "info", msg)
+
+
+LBA28_LIMIT = 2**28                     # sectors Windows 9x's IDE driver can address (128 GiB)
+
+
+@patch("win9x.big_disk", "Partitions Windows 9x can reach", families=("win9x",))
+def big_disk(ctx) -> PatchResult:
+    """Windows 95/98/Me's IDE driver (ESDI_506.PDR) uses 28-bit LBA: past 128 GiB it wraps
+    around to the start of the disk. Partitions below that are safe on a bigger disk."""
+    g = ctx.g
+    try:
+        disk = g.part_to_dev(ctx.root)
+    except RuntimeError:
+        disk = ctx.root
+    far = []
+    for p in (g.part_list(disk) if disk != ctx.root else []):
+        if p["part_end"] // bootchain.SECTOR >= LBA28_LIMIT:
+            far.append(f"partition {p['part_num']} ends at {p['part_end'] / 2**30:.0f} GiB")
+    if not far:
+        return PatchResult("", "", "not-needed", "All partitions lie within the first 128 GiB.")
+    return PatchResult("", "", "info",
+                       "Warning: " + "; ".join(far) + ". Windows 9x's own IDE driver can only "
+                       "address the first 128 GiB of a disk: what Windows writes beyond that lands "
+                       "at the start of the disk instead and corrupts it. The risk starts when "
+                       "Windows uses that part of the partition; a partition that ends before "
+                       "128 GiB avoids it. Nothing was changed.")
 
 
 @patch("win9x.ram_limit", "Limit memory for Windows 9x", kind=CONFIG, families=("win9x",))
@@ -94,22 +156,42 @@ def vcache_limit(ctx) -> PatchResult:
 
 @patch("dos.boot_record", "Make the disk bootable", families=("dos", "win9x"))
 def boot_record(ctx) -> PatchResult:
-    """Repair the BIOS boot chain (MBR code, active flag, boot sector) in the overlay.
+    """Repair the BIOS boot chain (MBR code, active flag, partition type, boot sector).
 
     Disks prepared on Linux often cannot start DOS or Windows 9x: mkfs.fat
-    writes placeholder boot code, and no partition may be marked active. The
-    boot sector is replaced by SYSLINUX, whose chain.c32 starts the system's
-    own IO.SYS / KERNEL.SYS (Rehome cannot ship Microsoft's boot code).
+    writes placeholder boot code, and no partition may be marked active. Rehome
+    cannot ship Microsoft's boot code, so in the VM's copy of the disk:
+    Windows 95/98 and MS-DOS 7 get Rehome's own boot sector, which starts IO.SYS
+    the way grub4dos does (win9x_boot.asm); other DOS get SYSLINUX, whose
+    chain.c32 starts their KERNEL.SYS / IO.SYS. An MBR without code gets
+    Rehome's (mbr.asm).
     """
     g, o = ctx.g, ctx.os
     bc = bootchain.analyze(g, ctx.root)
     ctx.os.details["boot_chain"] = bc.to_dict()
     if bc.scheme == "gpt":
         return PatchResult("", "", "skipped", bc.problems[0])
-    if not bc.problems:
+    problems = list(bc.problems)
+    old = _old_syslinux(g, ctx.root) if bc.vbr_code == "syslinux" else ""
+    if "msdos7=" in old:
+        problems.append("An earlier Rehome version made it start Windows through SYSLINUX's "
+                        "chain.c32, which stops at \"Booting...\".")
+    if not problems:
         return PatchResult("", "", "not-needed", "The disk's boot code and active partition are fine.")
     changes = []
-    if bc.vbr_code in bootchain.UNBOOTABLE:
+    iosys = _iosys(g, ctx.root) if bc.fat else ""
+    if bc.vbr_code in bootchain.UNBOOTABLE or "msdos7=" in old:
+        if iosys == "msdos7":
+            changes += _install_win9x_boot_sector(g, ctx.root, bc, removing=bool(old))
+        elif o.family == "win9x":
+            why = {"winme": "Windows Me's IO.SYS is compressed, and only Microsoft's boot sector "
+                            "can start it. Start the VM from a Windows Me startup disk and run "
+                            "SYS C: to write it.",
+                   "missing": "IO.SYS is missing from the root of the system's partition."}.get(
+                iosys, "IO.SYS is not the MS-DOS 7 IO.SYS of Windows 95/98, so Rehome's boot "
+                       "sector cannot start it.")
+            return PatchResult("", "", "skipped", " ".join(problems) + " " + why)
+    if bc.vbr_code in bootchain.UNBOOTABLE and iosys != "msdos7":
         loader = _chain_loader(o)
         modules = _syslinux_modules()
         if not loader:
@@ -133,15 +215,17 @@ def boot_record(ctx) -> PatchResult:
         tool = _install_boot_sector(g, ctx.root, ctx.cfg.dir)
         changes.append(f"{ctx.root}: boot sector replaced by SYSLINUX ({tool}), which starts the "
                        f"system with chain.c32 {loader} (/syslinux/syslinux.cfg)")
+    changes += _fix_hidden_sectors(g, ctx.root, bc)
     if bc.partition:
         if bc.mbr_code in bootchain.UNBOOTABLE:
-            mbr = next((p for p in SYSLINUX_MBR if os.path.isfile(p)), None)
-            if not mbr:
-                raise RehomeError("The disk has no master boot record code, and SYSLINUX's "
-                                  "mbr.bin is not installed.", fix="Install syslinux.")
-            with open(mbr, "rb") as f:
-                g.pwrite_device(bc.disk, f.read()[:440], 0)     # keeps the partition table
-            changes.append(f"{bc.disk}: master boot record code written (SYSLINUX mbr.bin)")
+            _write(g, bc.disk, bootcode.MBR, 0)              # keeps the partition table
+            changes.append(f"{bc.disk}: master boot record code written (Rehome's)")
+        new_id = _dos_partition_type(bc, lba=o.family == "win9x" or iosys == "msdos7"
+                                     or o.distro == "freedos")
+        if new_id:
+            g.part_set_mbr_id(bc.disk, bc.partition, new_id)
+            changes.append(f"{bc.disk}: partition {bc.partition} type 0x{bc.part_id:02X} → "
+                           f"0x{new_id:02X} ({bc.fat})")
         if bc.active != [bc.partition]:
             for p in g.part_list(bc.disk):
                 n = p["part_num"]
@@ -149,8 +233,95 @@ def boot_record(ctx) -> PatchResult:
                     g.part_set_bootable(bc.disk, n, n == bc.partition)
             changes.append(f"{bc.disk}: partition {bc.partition} marked active"
                            + (f" (was: {', '.join(map(str, bc.active))})" if bc.active else ""))
-    return PatchResult("", "", "applied", " ".join(bc.problems) + " Fixed in the VM's disk.",
+    return PatchResult("", "", "applied", " ".join(problems) + " Fixed in the VM's disk.",
                        changes)
+
+
+def _install_win9x_boot_sector(g, root: str, bc, removing: bool) -> list[str]:
+    """Rehome's MS-DOS 7 boot sector with the partition's own BPB; files of an older
+    Rehome's SYSLINUX removed afterwards."""
+    if bc.fat == "FAT12":
+        raise RehomeError("Rehome's Windows 9x boot sector supports FAT16 and FAT32, not FAT12.")
+    vbr = g.pread_device(root, bootchain.SECTOR, 0)
+    fat32 = bc.fat == "FAT32"
+    code, bpb_end, drive = ((bootcode.WIN9X_FAT32, 0x5A, 0x40) if fat32
+                            else (bootcode.WIN9X_FAT16, 0x3E, 0x24))
+    new = bytearray(code[:3] + vbr[3:bpb_end] + code[bpb_end:])
+    new[3:11] = b"MSWIN4.1"     # the OEM name Microsoft recommends for FAT compatibility
+    new[drive] = 0x80
+    struct.pack_into("<I", new, 0x1C, bc.start)
+    _write(g, root, bytes(new), 0)
+    if fat32 and _backup_sector(vbr):
+        _write(g, root, bytes(new), _backup_sector(vbr) * bootchain.SECTOR)
+    hidden = struct.unpack_from("<I", vbr, 0x1C)[0]
+    changes = [f"{root}: boot sector replaced by Rehome's Windows 9x boot sector ({bc.fat}), "
+               "which starts IO.SYS" + (f"; hidden sectors {hidden} → {bc.start}"
+                                       if hidden != bc.start else "")]
+    if removing:
+        gone = []
+        with mounted(g, root, readonly=False):
+            for name in SYSLINUX_FILES:
+                path = ci_path(g, f"/syslinux/{name}")
+                if path:
+                    try:
+                        g.rm(path)
+                        gone.append(name)
+                    except RuntimeError:
+                        pass
+            folder = ci_path(g, "/syslinux")
+            if folder and not g.ls(folder):
+                g.rm_rf(folder)
+        if gone:
+            changes.append(f"{root}: SYSLINUX files of an earlier Rehome version removed "
+                           f"({', '.join(gone)})")
+    return changes
+
+
+def _fix_hidden_sectors(g, root: str, bc) -> list[str]:
+    """Correct the BPB's hidden sectors (where the partition starts), which mkfs.fat
+    sets to 0 on an image file and boot code uses to find the system's files."""
+    if not bc.fat:
+        return []
+    vbr = bytearray(g.pread_device(root, bootchain.SECTOR, 0))
+    hidden = struct.unpack_from("<I", vbr, 0x1C)[0]
+    if hidden == bc.start:
+        return []
+    struct.pack_into("<I", vbr, 0x1C, bc.start)
+    _write(g, root, bytes(vbr), 0)
+    backup = _backup_sector(vbr) * bootchain.SECTOR if bc.fat == "FAT32" else 0
+    if backup:
+        copy = bytearray(g.pread_device(root, bootchain.SECTOR, backup))
+        if copy[0x0B:0x1C] == vbr[0x0B:0x1C]:
+            struct.pack_into("<I", copy, 0x1C, bc.start)
+            _write(g, root, bytes(copy), backup)
+    return [f"{root}: boot sector's hidden sectors {hidden} → {bc.start} (where the partition starts)"]
+
+
+def _backup_sector(vbr: bytes) -> int:
+    """Where a FAT32 partition keeps a copy of its boot sector (0: none)."""
+    backup, reserved = struct.unpack_from("<H", vbr, 0x32)[0], struct.unpack_from("<H", vbr, 0x0E)[0]
+    return backup if 0 < backup < reserved else 0
+
+
+def _dos_partition_type(bc, lba: bool) -> int:
+    """A partition type DOS reads the system's partition with, or 0 to keep the current one.
+
+    ``lba``: the system knows the LBA types (MS-DOS 7 / Windows 9x, FreeDOS); they are
+    needed when the partition reaches past what CHS addressing can.
+    """
+    if bc.scheme != "msdos" or not bc.partition or not bc.fat:
+        return 0
+    far = bc.end >= bootchain.CHS_LIMIT
+    known = bootchain.FAT_IDS.get(bc.part_id)
+    if known and not (lba and far and bc.part_id in bootchain.CHS_TYPES and bc.fat != "FAT12"):
+        return 0
+    if bc.fat == "FAT12":
+        return 0x01
+    if bc.fat == "FAT32":
+        return 0x0C if lba else 0x0B
+    if lba and far:
+        return 0x0E
+    return 0x06 if bc.end - bc.start + 1 >= 65536 else 0x04
 
 
 def _install_boot_sector(g, device: str, workdir) -> str:

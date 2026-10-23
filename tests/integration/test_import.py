@@ -319,3 +319,139 @@ def test_boot_repair_when_libguestfs_cannot_install_syslinux(images, monkeypatch
     finally:
         runner.force_off(cfg)
     assert sha256(src) == before
+
+
+STARTED_LIKE_GRUB4DOS = ("IOSYS ax=0000 bx=0000 dx=F880 sp=0400 bp=7C00 ss=0000 ds=0000 es=0000 "
+                         "cs=0070 sum=OK")
+
+
+def _boot_report(cfg, wait=90):
+    """What the stand-in IO.SYS (tests/fixtures/iosys_stub.asm) printed, the screen's 80-column
+    lines joined (its report is longer than one)."""
+    from rehome.vm import runner
+    try:
+        runner.start(cfg, headless=True)
+        deadline = time.monotonic() + wait
+        while time.monotonic() < deadline:
+            text = runner.screen_text(cfg)
+            if "IOSYS " in text or "MSLOAD " in text or "Rehome" in text:
+                time.sleep(1)
+                break
+            time.sleep(0.5)
+        return "".join(runner.screen_text(cfg).splitlines())
+    finally:
+        runner.force_off(cfg)
+
+
+def _patch_entry(cfg, pid):
+    import json
+    for line in (cfg.dir / "logs" / "patch.log").read_text().splitlines():
+        e = json.loads(line)
+        if e.get("id") == pid:
+            found = e
+    return found
+
+
+needs_nasm_mtools = pytest.mark.skipif(
+    not all(__import__("shutil").which(t) for t in ("nasm", "mcopy", "mkfs.fat")),
+    reason="needs nasm, mtools and mkfs.fat")
+
+
+@needs_nasm_mtools
+@pytest.mark.parametrize("fat, layout", [
+    # Linux-made: placeholder boot code, hidden sectors 0, type 0x83, no MBR code, nothing active
+    (32, dict(hidden=0, part_id=0x83, mbr_code=False, active=False)),
+    (16, dict(hidden=None)),                                          # only the boot code missing
+    # past 8 GB with a CHS type, and past the 128 GiB Windows 9x's IDE driver can reach
+    (32, dict(start=268_000_000, part_id=0x0B, hidden=None)),
+])
+def test_windows98_disk_prepared_on_linux_starts_io_sys(images, fat, layout):
+    """Regression: a Windows 98 VDI formatted with mkfs.fat stopped at SYSLINUX's
+    "Booting..." (chain.c32's msdos7 mode starts IO.SYS with SS:BP pointing into IO.SYS).
+    Rehome's own boot sector loads the rest of IO.SYS (here a fragmented stand-in that
+    reports how it was started) to 0070:0000 and starts it like grub4dos does."""
+    from rehome import importer
+    src = images / f"win98-boot-{fat}-{'-'.join(f'{k}{v}' for k, v in layout.items())}.img"
+    if not src.exists():
+        W.build_win9x_bootable(src, W.fake_msdos7_iosys(), fat=fat, **layout)
+    frags = W.fat_chain(src, layout.get("start", 63), b"IO      SYS")
+    assert sum(b != a + 1 for a, b in zip(frags, frags[1:])) >= 10      # IO.SYS is fragmented
+    before = sha256(src)
+    a = importer.analyze([str(src)], smart_check=False)
+    assert a.os.family == "win9x" and a.os.details["boot_chain"]["problems"]
+    cfg = importer.run(a, importer.ImportOptions(mode="linked"))
+    entry = _patch_entry(cfg, "dos.boot_record")
+    assert entry["status"] == "applied", entry
+    assert any("Rehome's Windows 9x boot sector" in c for c in entry["changes"]), entry
+    if layout.get("part_id") == 0x83:
+        assert any("type 0x83 → 0x0C" in c for c in entry["changes"]), entry
+        assert any("hidden sectors 0 → 63" in c for c in entry["changes"]), entry
+        assert any("master boot record code written" in c for c in entry["changes"]), entry
+    big = _patch_entry(cfg, "win9x.big_disk")
+    if layout.get("start"):
+        assert any("type 0x0B → 0x0C" in c for c in entry["changes"]), entry
+        assert big["status"] == "info" and "ends at 128 GiB" in big["message"], big
+    else:
+        assert big["status"] == "not-needed", big
+    assert STARTED_LIKE_GRUB4DOS in _boot_report(cfg)
+    assert sha256(src) == before
+
+
+@needs_nasm_mtools
+def test_windows98_started_by_an_older_rehomes_syslinux_is_repaired(images):
+    """Rehome 0.3.5/0.3.6 installed SYSLINUX + chain.c32 msdos7=/io.sys, which hangs: running
+    the fix again replaces it with Rehome's boot sector and removes the SYSLINUX files."""
+    import json
+    import shutil
+    import subprocess
+    from rehome import importer
+    from rehome.inspect.gfs import Drive, session
+    from rehome.inspect.model import InspectionReport
+    from rehome.patch import engine, legacy
+    modules = legacy._syslinux_modules()
+    if not modules or not shutil.which("syslinux"):
+        pytest.skip("SYSLINUX is not installed")
+    src = images / "win98-old-rehome-syslinux.img"
+    W.build_win9x_bootable(src, W.fake_msdos7_iosys(), fat=32, hidden=None)
+    offset = f"{src}@@{63 * 512}"
+    cfg_text = ("# Written by Rehome: this partition had no working boot code, so SYSLINUX\r\n"
+                "DEFAULT system\r\nPROMPT 0\r\nTIMEOUT 0\r\n"
+                "LABEL system\r\n  COM32 chain.c32\r\n  APPEND fs msdos7=/io.sys\r\n")
+    cfg_file = images / "syslinux.cfg"
+    cfg_file.write_text(cfg_text, newline="")
+    env = {"MTOOLS_SKIP_CHECK": "1", "PATH": "/usr/bin:/bin"}
+    subprocess.run(["mmd", "-i", offset, "::syslinux"], check=True, env=env)
+    for f in [*(f"{modules}/{m}" for m in legacy.CHAIN_MODULES), str(cfg_file)]:
+        subprocess.run(["mcopy", "-i", offset, f, "::syslinux/"], check=True, env=env)
+    subprocess.run(["syslinux", "--install", "--offset", str(63 * 512), "--directory", "/syslinux",
+                    str(src)], check=True, env=env)
+    a = importer.analyze([str(src)], smart_check=False)
+    assert a.os.details["boot_chain"]["vbr_code"] == "syslinux"
+    cfg = importer.run(a, importer.ImportOptions(mode="linked"))
+    entry = _patch_entry(cfg, "dos.boot_record")
+    assert entry["status"] == "applied" and "chain.c32" in entry["message"], entry
+    assert any("SYSLINUX files of an earlier Rehome version removed" in c
+               for c in entry["changes"]), entry
+    assert STARTED_LIKE_GRUB4DOS in _boot_report(cfg)
+    with session([Drive(str(cfg.resolve(cfg.disks[0].file)), "qcow2")]) as g:
+        g.mount_ro("/dev/sda1", "/")
+        assert not g.exists("/syslinux")
+    # Running the fix again (`rehome patch run VM --only dos.boot_record`) finds nothing to do.
+    o = InspectionReport.from_dict(json.loads((cfg.dir / "inspection.json").read_text())).oses[0]
+    results = engine.run(cfg, o, importer.ImportOptions(), only=["dos.boot_record"])
+    assert [r.status for r in results] == ["not-needed"], results
+
+
+@needs_nasm_mtools
+def test_windows_me_boot_sector_is_not_replaced(images):
+    """Windows Me's IO.SYS is compressed and needs Microsoft's boot sector: Rehome says so."""
+    from rehome import importer
+    iosys = bytearray(W.fake_msdos7_iosys())
+    iosys[0x800:0x802] = b"CM"
+    src = images / "winme-boot.img"
+    W.build_win9x_bootable(src, bytes(iosys), fat=32, kernel32=(4, 90, 3000, 0))
+    a = importer.analyze([str(src)], smart_check=False)
+    assert a.os.distro == "winme"
+    cfg = importer.run(a, importer.ImportOptions(mode="linked"))
+    entry = _patch_entry(cfg, "dos.boot_record")
+    assert entry["status"] == "skipped" and "SYS C:" in entry["message"], entry

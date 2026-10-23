@@ -34,6 +34,11 @@
     <control>pointing</control>
   </supports>
   <releases>
+    <release version="0.3.7" date="2026-10-23">
+      <description>
+        <p>Windows 95 and 98 disks prepared on Linux start: Rehome writes its own boot sector, which starts IO.SYS the way grub4dos does, instead of SYSLINUX, which stopped at "Booting...". Rehome also warns when a Windows 9x partition reaches past 128 GiB.</p>
+      </description>
+    </release>
     <release version="0.3.6" date="2026-10-23">
       <description>
         <p>DOS and Windows 9x boot repair also works when libguestfs's helper has no SYSLINUX: Rehome then uses this computer's own syslinux.</p>

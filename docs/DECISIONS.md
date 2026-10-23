@@ -829,3 +829,63 @@ sentence: the engine dropped the error's fix and libguestfs' message.
   of the partition in the VM's folder, writing back only the 64 KiB blocks
   it changed. Tested end to end with both libguestfs methods failing (both
   backends): the VM boots, the source is unchanged, the copy is removed.
+
+## D37. Rehome's own boot sector for Windows 95/98
+
+Reported with 0.3.6: the Windows 98 VM reached SYSLINUX ("BPB detection
+(sect): 7.0", "Booting...") and stopped there.
+
+- Cause, reproduced with a stand-in IO.SYS whose loader reports how it was
+  started: chain.c32's `msdos7=` mode, marked "TODO/TEST" in SYSLINUX's own
+  documentation, starts IO.SYS's loader (MSLOAD, at 0070:0200) with SS =
+  0070h and BP = 7C00h. SS:BP then points into IO.SYS, not at the boot
+  sector: the "bytes per sector" read there is 0C89h instead of 0200h.
+  MSLOAD reads the BPB through SS:BP, so it cannot load the rest of IO.SYS.
+- Rehome cannot ship Microsoft's boot sector, so it writes its own
+  (`rehome/patch/win9x_boot.asm`, FAT16 and FAT32, GPL). It does what
+  grub4dos's `chainloader /io.sys` does, the long-standing way to start
+  Windows 98 without Microsoft's boot code:
+  - it skips MSLOAD (the first 2 KiB of IO.SYS),
+  - loads the rest to 0070:0000,
+  - starts it with DL = drive, DH = F8h, AX = BX = 0, BP = 7C00h,
+    DS = ES = SS = 0 and SP = 400h.
+
+  The partition's own BPB is kept. The OEM name becomes MSWIN4.1, the name
+  Microsoft recommends for compatibility. On FAT32 the backup boot sector
+  is written too.
+- Tested in QEMU with a stand-in IO.SYS: 222 KiB, scattered over 20+
+  fragments. Cases:
+  - FAT32 and FAT16;
+  - a partition starting near 128 GiB;
+  - no MBR code, no active partition, type 0x83, hidden sectors 0.
+
+  It receives exactly those registers and every byte in order. Not tested
+  with a real Windows 98 IO.SYS (none here); the handover is grub4dos's.
+- Before writing, Rehome checks that IO.SYS has MS-DOS 7's layout ("MZ",
+  "BJ" at 200h, "MS" at 7FEh) and is at most 514 KiB. Windows Me's IO.SYS is
+  compressed, and only MSLOAD can unpack it. For Me Rehome says so and
+  changes nothing: start a Windows Me startup disk and run `SYS C:`.
+- The repair now also fixes:
+  - the BPB's hidden sectors (mkfs.fat writes 0 on an image file; boot code
+    finds files with it);
+  - a partition type DOS does not know (fdisk's 0x83);
+  - a CHS type on a partition that reaches past 8 GB (0x0B → 0x0C,
+    0x06 → 0x0E; not for MS-DOS 6, which has no LBA types);
+  - an MBR without code, which gets Rehome's (`mbr.asm`) instead of
+    SYSLINUX's.
+- VMs repaired by 0.3.5/0.3.6 are recognised by their `syslinux.cfg`
+  ("Written by Rehome", `msdos7=`). Running the fix again replaces SYSLINUX
+  and removes its files.
+- SYSLINUX stays for FreeDOS, MS-DOS 6 and PC DOS (`freedos=` is tested).
+- Reads use the BIOS's INT 13h extensions, which every BIOS since the late
+  1990s and SeaBIOS have.
+- `scripts/gen_boot_code.py` assembles the sources into
+  `rehome/patch/bootcode.py`, so running Rehome needs no assembler. A unit
+  test checks the stored bytes match the sources.
+- New warning `win9x.big_disk`: Windows 9x's IDE driver (ESDI_506.PDR) uses
+  28-bit LBA. A partition ending past 128 GiB gets a warning, because
+  Windows' writes beyond that point land at the start of the disk.
+  The reported disk is 931.5 GiB.
+- 86Box was suggested as an alternative. It emulates period hardware closely,
+  but the disk would still need a boot sector that can start IO.SYS, and 86Box
+  needs BIOS ROM files obtained separately. Not integrated.

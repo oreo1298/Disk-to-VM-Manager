@@ -237,3 +237,142 @@ def build_msdos(out: str, version: str = "6.22") -> str:
         g.shutdown()
         g.close()
     return out
+
+
+def fake_msdos7_iosys(size: int = 222_390, seed: int = 98) -> bytes:
+    """An IO.SYS laid out like MS-DOS 7's that reports how it was started (iosys_stub.asm).
+
+    Needs nasm. The bytes after the stub's code are pseudo-random, and the stub
+    checks they arrived in order.
+    """
+    import random
+    import struct
+    import subprocess
+    from pathlib import Path
+    src = Path(__file__).with_name("iosys_stub.asm")
+    with tempfile.TemporaryDirectory() as t:
+        out = Path(t) / "IO.SYS"
+        subprocess.run(["nasm", "-f", "bin", "-o", str(out), str(src)], check=True,
+                       capture_output=True)
+        stub = bytearray(out.read_bytes())
+    assert len(stub) == 0xC00 and stub[0x804:0x808] == b"RHM7"
+    data = random.Random(seed).randbytes(size - len(stub))
+    a = b = 0
+    for byte in data:
+        a = (a + byte) & 0xFFFF
+        b = (b + a) & 0xFFFF
+    stub[0x808:0x810] = struct.pack("<IHH", len(data), a, b)
+    return bytes(stub) + data
+
+
+def build_win9x_bootable(out, iosys: bytes, fat: int = 32, size_mib: int = 300, start: int = 63,
+                         part_id: int | None = None, hidden: int | None = 0,
+                         fragment: bool = True, mbr_code: bool = True, active: bool = True,
+                         kernel32=(4, 10, 2222, 0)):
+    """Windows 98 files copied onto a partition made with Linux tools, ``iosys`` as IO.SYS.
+
+    The boot sector is mkfs.fat's placeholder, with ``hidden`` as its hidden
+    sectors (mkfs.fat writes 0 when it formats an image file; None = correct).
+    ``start`` is the partition's first sector (it can lie past the 8 GiB CHS
+    limit; the image is sparse). ``fragment`` scatters IO.SYS over the disk.
+    ``mbr_code=False`` leaves the MBR without code (True: SYSLINUX's mbr.bin).
+    """
+    import shutil
+    import struct
+    import subprocess
+    from pathlib import Path
+    from tests.fixtures import freedos
+    out = Path(out)
+    sector = 512
+    part_sectors = size_mib * 2**20 // sector
+    with tempfile.TemporaryDirectory() as td:
+        t = Path(td)
+        part = t / "part.img"
+        subprocess.run([freedos._mkfs(), "-F", str(fat), *(["-s", "1"] if fat == 32 else []),
+                        "-h", str(start if hidden is None else hidden), "-C", str(part),
+                        str(part_sectors * sector // 1024)], check=True, capture_output=True)
+        env = dict(os.environ, MTOOLS_SKIP_CHECK="1", MTOOLS_NO_VFAT="1")
+
+        def mtools(*args):
+            subprocess.run(list(args), check=True, capture_output=True, env=env)
+
+        def copy(name, data):
+            src = t / "file"
+            src.write_bytes(data)
+            mtools("mcopy", "-o", "-i", str(part), str(src), f"::{name}")
+        if fragment:
+            # Files of one cluster each; deleting every other one leaves holes IO.SYS fills.
+            boot = part.read_bytes()[:sector]
+            cluster = boot[0x0D] * sector
+            for i in range(40):
+                copy(f"GAP{i:02d}.TMP", bytes([i]) * cluster)
+            mtools("mdel", "-i", str(part), *[f"::GAP{i:02d}.TMP" for i in range(0, 40, 2)])
+            if fat == 32:       # forget FSInfo's "next free cluster" hint: allocate from the start
+                with open(part, "r+b") as f:
+                    f.seek(struct.unpack_from("<H", boot, 0x30)[0] * sector + 0x1EC)
+                    f.write(b"\xff" * 4)
+        copy("IO.SYS", iosys)
+        copy("MSDOS.SYS", b"[Paths]\r\nWinDir=C:\\WINDOWS\r\nWinBootDir=C:\\WINDOWS\r\n"
+                          b"HostWinBootDrv=C\r\n\r\n[Options]\r\nBootGUI=1\r\n")
+        copy("COMMAND.COM", b"\xe9\x00\x00Microsoft(R) Windows 98\x00")
+        mtools("mmd", "-i", str(part), "::WINDOWS", "::WINDOWS/SYSTEM", "::WINDOWS/SYSTEM/IOSUBSYS")
+        copy("WINDOWS/WIN.COM", b"\xe9WIN")
+        copy("WINDOWS/SYSTEM.INI", b"[boot]\r\nshell=Explorer.exe\r\n[386Enh]\r\n[vcache]\r\n")
+        copy("WINDOWS/SYSTEM/VMM32.VXD", b"MZ" + b"\x00" * 200)
+        copy("WINDOWS/SYSTEM/IOSUBSYS/ESDI_506.PDR", b"LE")
+        copy("WINDOWS/SYSTEM/KERNEL32.DLL", regf.minimal_pe("i386") +
+             regf.version_resource(*kernel32, original_filename="KERNEL32.DLL"))
+        code = (Path(next(p for p in freedos.MBR_CANDIDATES if os.path.exists(p)))
+                .read_bytes()[:440] if mbr_code else b"")
+        if part_id is None:
+            part_id = 0x0C if fat == 32 else 0x0E
+        end = start + part_sectors - 1
+        entry = (bytes([0x80 if active else 0]) + freedos._chs(min(start, 1023 * 255 * 63))
+                 + bytes([part_id]) + freedos._chs(min(end, 1023 * 255 * 63))
+                 + struct.pack("<II", start, part_sectors))
+        mbr = code + b"\x00" * (446 - len(code)) + entry + b"\x00" * 48 + b"\x55\xaa"
+        with open(out, "wb") as f:
+            f.write(mbr)
+            f.seek(start * sector)
+            with open(part, "rb") as p:
+                shutil.copyfileobj(p, f, 4 * 2**20)
+            f.truncate((end + 1 + 2048) * sector)
+    return out
+
+
+def fat_chain(image, start: int, name: bytes) -> list[int]:
+    """Clusters of a root-directory file on the FAT partition at sector ``start``."""
+    import struct
+    with open(image, "rb") as f:
+        f.seek(start * 512)
+        bpb = f.read(512)
+        bps, spc, rsvd, nfats, rootent, _, _, fatsz16 = struct.unpack_from("<HBHBHHBH", bpb, 11)
+        fat32 = fatsz16 == 0
+        fatsz = struct.unpack_from("<I", bpb, 0x24)[0] if fat32 else fatsz16
+        f.seek((start + rsvd) * bps)
+        table = f.read(fatsz * bps)
+        data = start + rsvd + nfats * fatsz + (0 if fat32 else rootent * 32 // bps)
+
+        def follow(c):
+            out = []
+            while 2 <= c < (0x0FFFFFF8 if fat32 else 0xFFF8):
+                out.append(c)
+                c = (struct.unpack_from("<I", table, c * 4)[0] & 0x0FFFFFFF if fat32
+                     else struct.unpack_from("<H", table, c * 2)[0])
+            return out
+        if fat32:
+            root = b"".join(_read_cluster(f, data, spc, bps, c)
+                            for c in follow(struct.unpack_from("<I", bpb, 0x2C)[0]))
+        else:
+            f.seek((data - rootent * 32 // bps) * bps)
+            root = f.read(rootent * 32)
+        for i in range(0, len(root), 32):
+            if root[i:i + 11] == name:
+                hi, lo = struct.unpack_from("<H", root, i + 20)[0], struct.unpack_from("<H", root, i + 26)[0]
+                return follow(hi << 16 | lo if fat32 else lo)
+    raise FileNotFoundError(name)
+
+
+def _read_cluster(f, data, spc, bps, c):
+    f.seek((data + (c - 2) * spc) * bps)
+    return f.read(spc * bps)

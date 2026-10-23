@@ -81,7 +81,7 @@ def cmd_insert(args) -> int:
         iso = guest_tools.download_tools(cfg, progress=printer)
         printer.finish()
     guest_tools.attach_tools(cfg, iso)
-    run = "spice-guest-tools-0.65.exe (see README.TXT)" if guest_tools.legacy_windows(cfg) \
+    run = plan.url.rsplit("/", 1)[1] + " (see README.TXT)" if guest_tools.legacy_windows(cfg) \
         else "virtio-win-guest-tools.exe"
     print(f"Inserted {iso}. In the VM, open the CD drive and run {run}.")
     return 0

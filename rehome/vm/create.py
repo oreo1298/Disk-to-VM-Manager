@@ -58,6 +58,11 @@ def _facts_for_spec(spec: NewVMSpec) -> tuple[dict, str, int, str]:
             prof = profiles.get(spec.os)
             facts = {k: (v[0] if isinstance(v, list) else v) for k, v in prof.match.items()
                      if not k.endswith(("_min", "_max", "_regex"))}
+            # The oldest version the profile is for (Windows XP: 5.1), so that what depends
+            # on the version (guest tools, checks) knows the system.
+            for key in ("version", "build"):
+                if f"{key}_min" in prof.match and key not in facts:
+                    facts[key] = str(prof.match[f"{key}_min"])
             facts["name"] = prof.name
             return facts, prof.name, 0, prof.id
         except KeyError:

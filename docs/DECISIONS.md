@@ -757,3 +757,21 @@ screen briefly showed "Starting <VM>".
   console...").
 - **Drivers in general**: appliances need none (the guest sees the same
   virtual hardware everywhere); documented in APPLIANCE.md "Drivers".
+
+## D34. Guest tools by Windows era, also for systems chosen by hand
+
+Reported: virtio-win 0.1.302 does not install on Windows XP. 0.3.2 gave XP
+the SPICE guest tools only when the VM knew its Windows version; a system
+chosen by hand in the New VM wizard (a profile such as "Windows XP / Server
+2003") had none, and got current virtio-win.
+
+- Rehome decides by version when it has one, and otherwise by the VM's
+  hardware profile: XP/2003 → SPICE guest tools 0.65; Vista/7 → SPICE guest
+  tools 0.141 (what libosinfo lists for Windows 7; their "faster devices"
+  are virtio disks and network with QXL, which current virtio-win's
+  installer, Windows 8 and later only, does not cover); 2000/NT → none;
+  8 and later → virtio-win.
+- New VMs with a hand-chosen system record the profile's lowest version
+  (XP: 5.1, Windows 11: build 22000), like a detected system would.
+- Not verified against real Windows 7 or Vista; Vista is not in
+  libosinfo's list (the 0.141 tools are offered as for 7).

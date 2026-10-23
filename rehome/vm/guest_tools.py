@@ -24,27 +24,55 @@ from rehome.vm.config import VMConfig
 
 VIRTIO_WIN_URL = ("https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/"
                   "stable-virtio/virtio-win.iso")
-# Current virtio-win no longer supports Windows XP and Server 2003. The SPICE guest
-# tools 0.65 do (QXL display driver, SPICE agent, virtio drivers of their time); this
-# is the copy libosinfo's database lists for Windows XP (also used by GNOME Boxes).
-XP_TOOLS_URL = ("https://zeenix.fedorapeople.org/drivers/win-tools/postinst/"
-                "spice-guest-tools-0.65.exe")
-XP_TOOLS_ISO = "rehome-windows-xp-tools.iso"
-XP_README = """\
-Rehome guest tools for Windows XP and Server 2003
-=================================================
+# Current virtio-win supports Windows 8 and later (its installer refuses older
+# systems). Older Windows gets the SPICE guest tools that libosinfo's database lists
+# for it (also used by GNOME Boxes): QXL display driver, SPICE agent and the virtio
+# drivers of their time.
+@dataclass(frozen=True)
+class LegacyTools:
+    systems: str           # for messages
+    url: str
+    iso: str               # the disc Rehome makes in the downloads folder
+    note: str              # what to know before installing
+    switch: str            # what "switch to faster devices" changes afterwards
 
-1. Run spice-guest-tools-0.65.exe and follow the installer. Windows XP needs
-   Service Pack 3. Windows asks whether to continue with drivers that have not
-   passed "Windows Logo testing": choose Continue Anyway.
+
+LEGACY_TOOLS = {
+    "xp": LegacyTools(
+        "Windows XP and Server 2003",
+        "https://zeenix.fedorapeople.org/drivers/win-tools/postinst/spice-guest-tools-0.65.exe",
+        "rehome-windows-xp-tools.iso",
+        "Windows XP needs Service Pack 3.",
+        "the display becomes QXL: resolutions up to 2560×1600, such as 1920×1080"),
+    "vista7": LegacyTools(
+        "Windows 7 (and Vista)",
+        "https://fedorapeople.org/groups/virt/unattended/drivers/postinst/spice-guest-tools/"
+        "0.141/spice-guest-tools-0.141.exe",
+        "rehome-windows-7-tools.iso",
+        "libosinfo lists this version for Windows 7; Vista is not listed and untested.",
+        "disks and network become virtio, the display QXL"),
+}
+XP_TOOLS_URL = LEGACY_TOOLS["xp"].url
+XP_TOOLS_ISO = LEGACY_TOOLS["xp"].iso
+# Profiles of the systems each tool set is for, when the VM has no version number
+# (the system was chosen by hand in the New VM wizard).
+ERA_BY_PROFILE = {"windows-xp": "xp", "windows-vista-7": "vista7", "windows-2000": "old",
+                  "windows-nt4": "old"}
+
+README = """\
+Rehome guest tools for {systems}
+{line}
+
+1. Run {exe} and follow the installer. {note}
+   Windows asks whether to continue with drivers that are not signed by
+   Microsoft: choose to install them (Continue Anyway / Install).
 2. Shut Windows down.
 3. In Rehome, switch the VM to the faster devices (Summary tab, or
-   `rehome tools paravirt VM`). The display becomes QXL.
-4. Start the VM again. In Display Properties > Settings, choose a resolution
-   up to 2560 x 1600 (for example your screen's 1920 x 1080).
+   `rehome tools paravirt VM`): {switch}.
+4. Start the VM again.
 
 If Windows does not start properly afterwards, go back to the checkpoint
-"Before switching to virtio" that Rehome took.
+"Before switching to virtio" that Rehome took first.
 """
 
 LINUX_PACKAGES = {
@@ -83,10 +111,25 @@ def windows_version(cfg: VMConfig) -> tuple[int, int]:
         return 0, 0
 
 
+def windows_era(cfg: VMConfig) -> str:
+    """"xp", "vista7", "old" (2000, NT), "modern" (8 and later), or "" (not Windows)."""
+    if cfg.os.family != "windows" or cfg.os.distro == "reactos":
+        return ""
+    v = windows_version(cfg)
+    if v == (0, 0):
+        return ERA_BY_PROFILE.get(cfg.profile, "modern")
+    if v < (5, 1):
+        return "old"
+    if v < (6, 0):
+        return "xp"
+    if v < (6, 2):
+        return "vista7"
+    return "modern"
+
+
 def legacy_windows(cfg: VMConfig) -> bool:
-    """Windows XP or Server 2003 (NT 5.1/5.2): tools come from the SPICE project."""
-    return (cfg.os.family == "windows" and cfg.os.distro != "reactos"
-            and (5, 1) <= windows_version(cfg) < (6, 0))
+    """Windows XP to 7: guest tools from the SPICE project, not current virtio-win."""
+    return windows_era(cfg) in LEGACY_TOOLS
 
 
 def mark_first_boot_ok(cfg: VMConfig) -> None:
@@ -97,27 +140,31 @@ def mark_first_boot_ok(cfg: VMConfig) -> None:
         library.save(fresh)
 
 
-def xp_tools_iso() -> str | None:
-    iso = paths.downloads_dir() / XP_TOOLS_ISO
+def _tools_iso(era: str) -> str | None:
+    iso = paths.downloads_dir() / LEGACY_TOOLS[era].iso
     return str(iso) if iso.exists() else None
+
+
+def xp_tools_iso() -> str | None:
+    return _tools_iso("xp")
 
 
 def plan(cfg: VMConfig) -> ToolsPlan:
     fam = cfg.os.family
-    if legacy_windows(cfg):
-        iso = xp_tools_iso()
-        what = ("They install the QXL display driver (resolutions up to 2560×1600, such as "
-                "1920×1080) and the SPICE agent; Windows XP needs Service Pack 3. Then shut "
-                "Windows down and switch to the faster devices: the display becomes QXL.")
+    era = windows_era(cfg)
+    if era in LEGACY_TOOLS:
+        t = LEGACY_TOOLS[era]
+        exe = t.url.rsplit("/", 1)[1]
+        what = (f"They install the QXL display driver, the virtio drivers and the SPICE agent. "
+                f"{t.note} Then shut Windows down and switch to the faster devices: {t.switch}.")
+        iso = _tools_iso(era)
         if iso:
-            return ToolsPlan("windows-iso", "Insert the guest tools disc, then run "
-                             "spice-guest-tools-0.65.exe from it inside Windows. " + what,
-                             iso=iso, url=XP_TOOLS_URL)
-        return ToolsPlan("windows-iso", "The SPICE guest tools for Windows XP are needed (the "
-                         "SPICE project's Windows tools, version 0.65, from the location "
-                         "libosinfo lists for XP). " + what, needs_download=True, url=XP_TOOLS_URL)
-    if fam == "windows" and cfg.os.distro != "reactos" and \
-            (0, 0) < windows_version(cfg) < (5, 1):
+            return ToolsPlan("windows-iso", f"Insert the guest tools disc, then run {exe} from "
+                             f"it inside Windows. " + what, iso=iso, url=t.url)
+        return ToolsPlan("windows-iso", f"The SPICE guest tools for {t.systems} are needed "
+                         f"({exe}, from the location libosinfo lists; current virtio-win needs "
+                         f"Windows 8 or later). " + what, needs_download=True, url=t.url)
+    if era == "old":
         return ToolsPlan("none", "There are no guest tools for Windows 2000 and older; it uses "
                          "its built-in drivers.")
     if fam == "windows" and cfg.os.distro != "reactos":
@@ -147,20 +194,28 @@ def download_virtio_win(progress=None, cancel=None) -> str:
                                  cancel=cancel))
 
 
-def download_xp_tools(progress=None, cancel=None) -> str:
-    """Download the SPICE guest tools for Windows XP and put them on a disc."""
+def download_legacy_tools(era: str, progress=None, cancel=None) -> str:
+    """Download the SPICE guest tools for an older Windows and put them on a disc."""
     from rehome.media import download
-    exe = download.download(XP_TOOLS_URL, progress=progress, cancel=cancel)
-    return make_xp_tools_iso(exe)
+    exe = download.download(LEGACY_TOOLS[era].url, progress=progress, cancel=cancel)
+    return make_tools_iso(exe, era)
 
 
-def make_xp_tools_iso(exe: str | os.PathLike, out: Path | None = None) -> str:
+def download_xp_tools(progress=None, cancel=None) -> str:
+    return download_legacy_tools("xp", progress, cancel)
+
+
+def make_tools_iso(exe: str | os.PathLike, era: str, out: Path | None = None) -> str:
     from rehome.media.unattended import make_iso
-    out = Path(out) if out else paths.ensure(paths.downloads_dir()) / XP_TOOLS_ISO
+    t = LEGACY_TOOLS[era]
+    out = Path(out) if out else paths.ensure(paths.downloads_dir()) / t.iso
+    title = f"Rehome guest tools for {t.systems}"
+    readme = README.format(systems=t.systems, line="=" * len(title), exe=Path(exe).name,
+                           note=t.note, switch=t.switch)
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
         shutil.copy(exe, root / Path(exe).name)
-        (root / "README.TXT").write_bytes(XP_README.replace("\n", "\r\n").encode())
+        (root / "README.TXT").write_bytes(readme.replace("\n", "\r\n").encode())
         part = out.with_name(out.name + ".part")
         make_iso(root, "REHOME_TOOLS", part)
         os.replace(part, out)
@@ -168,10 +223,15 @@ def make_xp_tools_iso(exe: str | os.PathLike, out: Path | None = None) -> str:
     return str(out)
 
 
+def make_xp_tools_iso(exe: str | os.PathLike, out: Path | None = None) -> str:
+    return make_tools_iso(exe, "xp", out)
+
+
 def download_tools(cfg: VMConfig, progress=None, cancel=None) -> str:
     """Download what ``plan(cfg)`` needs and return the disc to insert."""
-    if legacy_windows(cfg):
-        return download_xp_tools(progress, cancel)
+    era = windows_era(cfg)
+    if era in LEGACY_TOOLS:
+        return download_legacy_tools(era, progress, cancel)
     return download_virtio_win(progress, cancel)
 
 

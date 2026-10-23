@@ -34,6 +34,11 @@
     <control>pointing</control>
   </supports>
   <releases>
+    <release version="0.3.5" date="2026-10-23">
+      <description>
+        <p>DOS and Windows 9x disks whose boot sector was written on Linux are made bootable even when libguestfs lacks mtools; failed automatic fixes show their technical details.</p>
+      </description>
+    </release>
     <release version="0.3.4" date="2026-10-23">
       <description>
         <p>Appliances no longer report a normal shutdown or restart of the VM as a crash.</p>

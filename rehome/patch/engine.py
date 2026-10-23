@@ -141,7 +141,8 @@ def _run_one(spec, ctx: PatchContext, record) -> None:
     except Cancelled:
         raise
     except RehomeError as e:
-        r = PatchResult(spec.id, spec.title, "failed", e.message)
+        r = PatchResult(spec.id, spec.title, "failed", " ".join(x for x in (e.message, e.fix) if x),
+                        details=e.details or "")
     except Exception as e:  # noqa: BLE001 - one broken patch must not stop the others
         log.exception("patch %s failed", spec.id)
         r = PatchResult(spec.id, spec.title, "failed", str(e))

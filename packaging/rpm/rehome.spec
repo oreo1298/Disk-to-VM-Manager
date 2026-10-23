@@ -11,7 +11,7 @@
 %global __brp_python_bytecompile %{nil}
 
 Name:           rehome
-Version:        0.3.4
+Version:        0.3.5
 Release:        1%{?dist}
 Summary:        Turn installed operating systems into QEMU/KVM virtual machines
 License:        GPL-3.0-or-later
@@ -60,6 +60,7 @@ Recommends:     virtiofsd
 Recommends:     passt
 Recommends:     gnu_ddrescue
 Recommends:     ewftools
+Recommends:     syslinux
 %else
 Requires:       qemu-kvm
 Requires:       qemu-img
@@ -100,6 +101,8 @@ Recommends:     virtiofsd
 Recommends:     passt
 Recommends:     ddrescue
 Recommends:     libewf-tools
+Recommends:     syslinux
+Recommends:     syslinux-extlinux
 %endif
 
 %description
@@ -139,6 +142,10 @@ python3 packaging/layout.py install \
 %{_datadir}/icons/hicolor/symbolic/apps/io.github.oreo1298.Rehome-symbolic.svg
 
 %changelog
+* Fri Oct 23 2026 Rehome contributors - 0.3.5-1
+- DOS/Windows 9x boot repair falls back to extlinux when libguestfs lacks mtools;
+  failed automatic fixes keep their details.
+
 * Fri Oct 23 2026 Rehome contributors - 0.3.4-1
 - Appliances: a normal shutdown or restart of the VM is no longer reported as a crash.
 

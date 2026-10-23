@@ -797,3 +797,28 @@ reason the kiosk assumed a crash. Reproduced with a stand-in socket
   no reason and the new one with `guest-shutdown`. The appliance test now
   ends with the VM powering itself off, and the test computer must turn
   off.
+
+## D36. SYSLINUX without mtools; failures keep their details
+
+Reported from Arch: importing a Windows 98 disk whose boot sector came from
+mkfs.fat ("This is not a bootable disk") failed at "Make the disk bootable:
+SYSLINUX could not be installed". The GUI and the patch log kept only that
+sentence: the engine dropped the error's fix and libguestfs' message.
+
+- libguestfs runs `syslinux` inside its helper VM, built from the host's
+  packages, and that `syslinux` copies files with mtools. Arch's syslinux
+  package does not depend on mtools; without it the helper VM fails with
+  "mcopy: not found / failed to create ldlinux.sys" (reproduced by
+  removing mtools inside the helper VM). The likeliest cause; not
+  confirmed, as the details were lost.
+- Fallback: `extlinux` on the mounted partition does the same through the
+  kernel's FAT driver, without mtools. Tested end to end (FAT32, copy
+  import, both libguestfs backends): the VM boots. Both `syslinux.cfg` and
+  `extlinux.conf` are written.
+- Failed fixes now keep the fix text (shown in the GUI) and the technical
+  details (patch log, `rehome patch log VM`).
+- SYSLINUX is a listed component (x86 only, so recommended rather than
+  required in the deb/rpm packages, optional on Arch), and `rehome doctor`
+  checks for it and for mtools.
+- Windows 98's own IO.SYS through chain.c32 `msdos7=` has not been tested
+  here (no Windows 98 image); FreeDOS is.

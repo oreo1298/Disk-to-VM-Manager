@@ -270,3 +270,37 @@ def test_dos_disk_prepared_on_linux_is_made_bootable(images, broken):
     finally:
         runner.force_off(cfg)
     assert sha256(src) == before
+
+
+@pytest.mark.skipif(bool(freedos.available()), reason="cannot build FreeDOS image")
+def test_boot_repair_without_mtools_in_libguestfs(images, monkeypatch):
+    """libguestfs's syslinux needs mtools in its helper VM (not pulled in on Arch): it then
+    fails with "mcopy: not found", and Rehome installs SYSLINUX with extlinux instead."""
+    from rehome import importer
+    from rehome.patch import legacy
+    from rehome.vm import runner
+    real = legacy._install_boot_sector
+    used = []
+
+    def without_mtools(g, device):
+        def syslinux(*a, **k):
+            raise RuntimeError("syslinux: sh: 1: mcopy: not found\nsyslinux: failed to create "
+                               "ldlinux.sys")
+        g.syslinux = syslinux
+        used.append(real(g, device))
+        return used[-1]
+    monkeypatch.setattr(legacy, "_install_boot_sector", without_mtools)
+    src = images / "freedos-fat32-no-mtools.img"
+    if not src.exists():
+        freedos.build(src, fat=32, boot_code=False, active=False, mbr_code=False)
+    a = importer.analyze([str(src)], smart_check=False)
+    cfg = importer.run(a, importer.ImportOptions(mode="copy"))
+    assert used == ["extlinux"]
+    try:
+        runner.start(cfg, headless=True)
+        deadline = time.monotonic() + 90
+        while time.monotonic() < deadline and freedos.MARKER not in runner.screen_text(cfg):
+            time.sleep(0.5)
+        assert freedos.MARKER in runner.screen_text(cfg), runner.screen_text(cfg)
+    finally:
+        runner.force_off(cfg)

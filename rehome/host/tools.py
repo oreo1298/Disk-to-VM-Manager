@@ -100,6 +100,16 @@ def virtiofsd_path() -> str | None:
                                "/usr/libexec/virtiofsd"))
 
 
+def _syslinux() -> Tool:
+    from rehome.patch import legacy
+    t = Tool("syslinux", "SYSLINUX", "Makes DOS and Windows 9x disks prepared on Linux bootable.",
+             False)
+    d = legacy._syslinux_modules()
+    if d:
+        t.found, t.path = True, d
+    return t
+
+
 def inventory() -> list[Tool]:
     tools = [
         _bin_tool("qemu-img", "qemu-img", "Creates overlays, copies and converts disk images.",
@@ -130,6 +140,9 @@ def inventory() -> list[Tool]:
                   ["xorriso", "mkisofs", "genisoimage"], ("-version",)),
         _bin_tool("mkfs.fat", "dosfstools", "Builds FAT media for DOS and Windows installs.",
                   False, ["mkfs.fat", "mkfs.vfat"], ("--help",), ("/usr/sbin", "/sbin")),
+        _syslinux(),
+        _bin_tool("mtools", "mtools", "Lets libguestfs install SYSLINUX on FAT partitions.",
+                  False, ["mcopy"], ("--version",)),
         _bin_tool("lsblk", "util-linux", "Lists disks.", True, ["lsblk"]),
         _gi("libosinfo", "libosinfo", "Recognises installer ISOs and recommends settings.",
             False, "Libosinfo", "1.0"),

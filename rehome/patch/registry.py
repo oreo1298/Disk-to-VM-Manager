@@ -16,6 +16,7 @@ class PatchResult:
     status: str = "applied"        # applied / not-needed / skipped / failed / info
     message: str = ""
     changes: list[str] = field(default_factory=list)
+    details: str = ""              # technical details of a failure (logged)
 
 
 @dataclass

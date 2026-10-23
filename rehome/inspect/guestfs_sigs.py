@@ -100,6 +100,7 @@ FUNCS = {
     'statvfs': ('guestfs_statvfs', 'struct:statvfs', [('path', 'str')], []),
     'sync': ('guestfs_sync', 'err', [], []),
     'syslinux': ('guestfs_syslinux_argv', 'err', [('device', 'str')], [('directory', 'str', 0)]),
+    'extlinux': ('guestfs_extlinux', 'err', [('directory', 'str')], []),
     'tar_in': ('guestfs_tar_in_opts_argv', 'err', [('tarfile', 'str'), ('directory', 'str')], [('compress', 'str', 0), ('xattrs', 'int', 1), ('selinux', 'int', 2), ('acls', 'int', 3)]),
     'umount': ('guestfs_umount_opts_argv', 'err', [('pathordevice', 'str')], [('force', 'int', 0), ('lazyunmount', 'int', 1)]),
     'umount_all': ('guestfs_umount_all', 'err', [], []),

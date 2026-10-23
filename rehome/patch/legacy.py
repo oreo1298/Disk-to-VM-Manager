@@ -123,18 +123,15 @@ def boot_record(ctx) -> PatchResult:
             g.mkdir_p("/syslinux")
             for m in CHAIN_MODULES:
                 g.upload(os.path.join(modules, m), f"/syslinux/{m}")
-            g.write("/syslinux/syslinux.cfg", (
-                "# Written by Rehome: this partition had no working boot code, so SYSLINUX\r\n"
-                f"# starts {o.name} through chain.c32 (in the VM's copy of the disk only).\r\n"
-                "DEFAULT system\r\nPROMPT 0\r\nTIMEOUT 0\r\n"
-                f"LABEL system\r\n  COM32 chain.c32\r\n  APPEND fs {loader}\r\n").encode())
-        try:
-            g.syslinux(ctx.root, directory="/syslinux")
-        except RuntimeError as e:
-            raise RehomeError("SYSLINUX could not be installed on the system's partition.",
-                              details=str(e)) from e
-        changes.append(f"{ctx.root}: boot sector replaced by SYSLINUX, which starts the system "
-                       f"with chain.c32 {loader} (/syslinux/syslinux.cfg)")
+            cfg = ("# Written by Rehome: this partition had no working boot code, so SYSLINUX\r\n"
+                   f"# starts {o.name} through chain.c32 (in the VM's copy of the disk only).\r\n"
+                   "DEFAULT system\r\nPROMPT 0\r\nTIMEOUT 0\r\n"
+                   f"LABEL system\r\n  COM32 chain.c32\r\n  APPEND fs {loader}\r\n").encode()
+            for name in ("syslinux.cfg", "extlinux.conf"):      # whichever installer runs
+                g.write(f"/syslinux/{name}", cfg)
+        tool = _install_boot_sector(g, ctx.root)
+        changes.append(f"{ctx.root}: boot sector replaced by SYSLINUX ({tool}), which starts the "
+                       f"system with chain.c32 {loader} (/syslinux/syslinux.cfg)")
     if bc.partition:
         if bc.mbr_code in bootchain.UNBOOTABLE:
             mbr = next((p for p in SYSLINUX_MBR if os.path.isfile(p)), None)
@@ -153,6 +150,29 @@ def boot_record(ctx) -> PatchResult:
                            + (f" (was: {', '.join(map(str, bc.active))})" if bc.active else ""))
     return PatchResult("", "", "applied", " ".join(bc.problems) + " Fixed in the VM's disk.",
                        changes)
+
+
+def _install_boot_sector(g, device: str) -> str:
+    """SYSLINUX's boot sector and ldlinux.sys in /syslinux of a FAT partition; the tool used.
+
+    libguestfs's ``syslinux`` needs mtools inside its helper VM, which it only has when
+    mtools is installed on this computer (Arch's syslinux package does not pull it in).
+    ``extlinux`` does the same job through the Linux FAT driver of the mounted partition.
+    """
+    try:
+        g.syslinux(device, directory="/syslinux")
+        return "syslinux"
+    except RuntimeError as first:
+        try:
+            with mounted(g, device, readonly=False):
+                g.extlinux("/syslinux")
+            return "extlinux"
+        except RuntimeError as second:
+            raise RehomeError(
+                "SYSLINUX could not be installed on the system's partition.",
+                fix="Install the syslinux and mtools packages, then run the fixes again: "
+                    "`rehome patch run VM --only dos.boot_record`.",
+                details=f"syslinux: {first}\nextlinux: {second}") from second
 
 
 @patch("bsd.report", "BSD disk controller", kind=CONFIG, families=("bsd",))

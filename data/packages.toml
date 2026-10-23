@@ -167,6 +167,14 @@ debian = ["xorriso", "dosfstools", "mtools"]
 fedora = ["xorriso", "dosfstools", "mtools"]
 suse = ["xorriso", "dosfstools", "mtools"]
 
+[legacy-boot]
+label = "SYSLINUX (repairs the boot sector of DOS and Windows 9x disks; x86 only)"
+required = false
+arch = ["syslinux"]
+debian = ["syslinux", "syslinux-common", "extlinux"]
+fedora = ["syslinux", "syslinux-extlinux"]
+suse = ["syslinux"]
+
 [hwinfo-tools]
 label = "Hardware listing tools"
 required = true

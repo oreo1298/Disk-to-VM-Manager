@@ -42,6 +42,8 @@ def cmd_log(args) -> int:
               f"{e.get('message', '')}")
         for ch in e.get("changes", []):
             print(dim("      - " + ch))
+        for line in (e.get("details") or "").splitlines():
+            print(dim("      ! " + line))
     return 0
 
 

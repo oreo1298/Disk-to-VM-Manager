@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import tempfile
@@ -68,7 +69,8 @@ Rehome guest tools for {systems}
    Microsoft: choose to install them (Continue Anyway / Install).
 2. Shut Windows down.
 3. In Rehome, switch the VM to the faster devices (Summary tab, or
-   `rehome tools paravirt VM`): {switch}.
+   `rehome tools paravirt VM`): {switch}. Rehome first checks that
+   Windows has the drivers and makes the disk driver load at boot.
 4. Start the VM again.
 
 If Windows does not start properly afterwards, go back to the checkpoint
@@ -282,6 +284,95 @@ def _check_available(cfg: VMConfig, changes: dict) -> None:
                 code="device-missing")
 
 
+DEVICES_FILE = "devices.json"       # in snapshots/<id>/ of a "Before switching to virtio"
+
+
+def _devices(cfg: VMConfig) -> dict:
+    return {"disks": {d.id: d.bus for d in cfg.disks}, "nics": {n.id: n.model for n in cfg.nics},
+            "display": cfg.display.device, "paravirt": cfg.guest.paravirt}
+
+
+def restore_devices(cfg: VMConfig, snap) -> list[str]:
+    """Put back the virtual devices a VM had before switch_to_paravirt (called when its
+    checkpoint is reverted to); returns what changed.
+
+    Checkpoints from before Rehome 0.3.8 did not record them: the profile's own
+    devices are used, for what the switch changes.
+    """
+    cfg = library.reload(cfg)
+    saved = cfg.dir / "snapshots" / snap.id / DEVICES_FILE
+    if saved.exists():
+        dev = json.loads(saved.read_text())
+    else:
+        try:
+            hw = profiles.get(cfg.profile).hardware
+        except KeyError:
+            return []
+        changed = paravirt_changes(cfg)
+        dev = {"disks": {d.id: hw.get("disk_bus") for d in cfg.disks} if "disk_bus" in changed else {},
+               "nics": {n.id: hw.get("nic") for n in cfg.nics} if "nic" in changed else {},
+               "display": hw.get("display") if "display" in changed else None, "paravirt": False}
+    log: list[str] = []
+
+    def change(new: VMConfig):
+        for d in new.disks:
+            bus = dev["disks"].get(d.id)
+            if bus and d.bus != bus:
+                log.append(f"{d.id}: {d.bus} → {bus}")
+                d.bus = bus
+        for n in new.nics:
+            model = dev["nics"].get(n.id)
+            if model and n.model != model:
+                log.append(f"{n.id}: {n.model} → {model}")
+                n.model = model
+        if dev.get("display") and new.display.device != dev["display"]:
+            log.append(f"display: {new.display.device} → {dev['display']}")
+            new.display.device = dev["display"]
+        new.guest.paravirt = bool(dev.get("paravirt"))
+    edit.mutate(cfg, change)
+    return log
+
+
+def _prepare_windows(cfg: VMConfig, changes: dict) -> list[str]:
+    """Look inside Windows (offline) before its devices change.
+
+    The virtio disk driver is made to load at boot (without that, Windows stops
+    with 0x7B INACCESSIBLE_BOOT_DEVICE); a device Windows has no driver for is
+    dropped from ``changes`` and keeps its current model. Returns what to tell the
+    user; the registry details go to logs/patch.log.
+    """
+    from rehome.disk import hashing, overlay
+    from rehome.inspect import gfs
+    from rehome.patch import windows as winpatch
+    notes, details = [], []
+    drives = [gfs.Drive(str(cfg.resolve(d.file)), d.format, readonly=False) for d in cfg.disks]
+    with overlay.for_config(cfg), gfs.session(drives) as g:
+        roots = [r for r in g.inspect_os() if g.inspect_get_type(r) == "windows"]
+        if not roots:
+            raise RehomeError("Rehome could not find Windows on the VM's disks, so it cannot "
+                              "check its drivers. Nothing was switched.")
+        root = roots[0]
+        nt = (g.inspect_get_major_version(root), g.inspect_get_minor_version(root))
+        with gfs.os_mounted(g, root, readonly=False):
+            if changes.get("nic") == "virtio-net-pci" and not winpatch.driver_available(g, root,
+                                                                                          "netkvm"):
+                del changes["nic"]
+                notes.append(f"network stays {cfg.nics[0].model if cfg.nics else 'as it is'}: "
+                             "Windows has no virtio network driver (netkvm)")
+            if changes.get("disk_bus") == "virtio":
+                done = winpatch.prepare_virtio_disk_boot(g, root, nt)
+                if done is None:
+                    del changes["disk_bus"]
+                    notes.append(f"disks stay {cfg.disks[0].bus.upper()}: Windows has no virtio "
+                                 "disk driver (viostor), so it could not start from a virtio disk")
+                else:
+                    details += done
+                    if done:
+                        notes.append("Windows: the virtio disk driver (viostor) now loads at boot")
+    hashing.log_event(cfg.dir / "logs" / "patch.log", "paravirt", notes=notes, changes=details)
+    return notes
+
+
 def switch_to_paravirt(cfg: VMConfig) -> list[str]:
     if runner.state(cfg).active:
         raise RehomeError("Shut the VM down first.")
@@ -289,11 +380,21 @@ def switch_to_paravirt(cfg: VMConfig) -> list[str]:
     if not changes:
         raise RehomeError("There are no faster virtual devices for this operating system.")
     _check_available(cfg, changes)
-    snapshots.create(cfg, "Before switching to virtio",
-                     "Taken automatically before Rehome switched the VM to paravirtual devices.",
-                     kind="pre-tools")
+    snap = snapshots.create(cfg, "Before switching to virtio",
+                            "Taken automatically before Rehome switched the VM to paravirtual "
+                            "devices.", kind="pre-tools")
+    saved = cfg.dir / "snapshots" / snap.id / DEVICES_FILE
+    saved.parent.mkdir(parents=True, exist_ok=True)
+    saved.write_text(json.dumps(_devices(cfg)))
     cfg = library.reload(cfg)
     log: list[str] = []
+    if cfg.os.family == "windows" and ("disk_bus" in changes or "nic" in changes):
+        log += _prepare_windows(cfg, changes)
+        if not changes:
+            snapshots.delete(cfg, snap.id)
+            raise RehomeError("Windows has none of the drivers for the faster devices, so nothing "
+                              "was switched.", fix="Install the guest tools inside Windows first "
+                              "(Summary tab: Install guest tools), shut Windows down, then switch.")
 
     def change(new: VMConfig):
         if "disk_bus" in changes:

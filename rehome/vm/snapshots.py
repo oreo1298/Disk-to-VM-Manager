@@ -116,6 +116,11 @@ def revert(cfg: VMConfig, ref: str) -> Snapshot:
         fresh.current_snapshot = snap.id
         library.save(fresh)
     cfg.current_snapshot = snap.id
+    if snap.kind == "pre-tools" and not st.active:
+        # The devices changed with the disks: Windows started from a virtio disk only
+        # with the drivers this checkpoint is from before.
+        from rehome.vm import guest_tools
+        guest_tools.restore_devices(cfg, snap)
     return snap
 
 

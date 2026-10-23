@@ -41,6 +41,7 @@ class WinSpec:
     size_mib: int = 700
     hostname: str = "OLDPC"
     class_filters: dict = field(default_factory=dict)   # class GUID -> UpperFilters list
+    driver_store: tuple = ()          # drivers staged in DriverStore\FileRepository (e.g. viostor)
 
 
 def _system_hive(spec: WinSpec) -> dict:
@@ -152,6 +153,14 @@ def build(out: str, spec: WinSpec, fmt: str = "raw") -> str:
             g.upload(cmd, f"{sys32}/cmd.exe")
             for drv in ("storahci", "stornvme", "atapi", "intelide", "pciide", spec.boot_driver):
                 g.write(f"{sys32}/drivers/{drv}.sys", regf.minimal_pe(spec.arch))
+            for drv in spec.driver_store:
+                # What pnputil leaves for a device the machine does not have (yet).
+                tag = "x86" if spec.arch == "i386" else "amd64"
+                folder = (f"{sys32}/DriverStore/FileRepository/{drv}.inf_{tag}_neutral_"
+                          + __import__("hashlib").sha1(drv.encode()).hexdigest()[:16])
+                g.mkdir_p(folder)
+                g.write(f"{folder}/{drv}.inf", f"; {drv} driver package\r\n".encode())
+                g.write(f"{folder}/{drv}.sys", regf.minimal_pe(spec.arch) + drv.encode())
             if spec.hal:
                 g.write(f"{sys32}/hal.dll", regf.minimal_pe("i386") +
                         regf.version_resource(5, 1, 2600, 5512, original_filename=spec.hal))

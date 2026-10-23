@@ -274,8 +274,10 @@ class SummaryPage(Gtk.ScrolledWindow):
     def _switch(self):
         cfg = self.page.cfg
         confirm(self, "Switch to faster devices?",
-                "Only do this after the guest tools/drivers are installed. If the VM does not start "
-                "afterwards, revert to the checkpoint \"Before switching to virtio\".", "Switch",
+                "Only do this after the guest tools/drivers are installed and the VM is shut down. "
+                "Rehome checks which drivers the system has and keeps the devices it has none for. "
+                "If the VM does not start afterwards, revert to the checkpoint \"Before switching "
+                "to virtio\": that also puts the old devices back.", "Switch",
                 lambda: run_async(lambda: guest_tools.switch_to_paravirt(cfg),
                                   lambda log: (self.page.reload(),
                                                self.page.window.toast("Switched: " + "; ".join(log), 6)),

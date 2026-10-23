@@ -11,7 +11,7 @@
 %global __brp_python_bytecompile %{nil}
 
 Name:           rehome
-Version:        0.3.7
+Version:        0.3.8
 Release:        1%{?dist}
 Summary:        Turn installed operating systems into QEMU/KVM virtual machines
 License:        GPL-3.0-or-later
@@ -142,6 +142,10 @@ python3 packaging/layout.py install \
 %{_datadir}/icons/hicolor/symbolic/apps/io.github.oreo1298.Rehome-symbolic.svg
 
 %changelog
+* Fri Oct 23 2026 Rehome contributors - 0.3.8-1
+- Switching Windows to virtio first makes the virtio disk driver load at boot
+  (Windows 7 stopped with 0x7B); reverting the checkpoint restores the devices.
+
 * Fri Oct 23 2026 Rehome contributors - 0.3.7-1
 - Windows 95/98 disks prepared on Linux get Rehome's own boot sector, which starts
   IO.SYS like grub4dos (SYSLINUX's chain.c32 stopped at "Booting...").

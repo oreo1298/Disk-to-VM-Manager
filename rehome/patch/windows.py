@@ -153,6 +153,81 @@ def boot_drivers(ctx) -> PatchResult:
                        f"controllers ({', '.join(enabled)}).", changes)
 
 
+# The PCI IDs QEMU gives a virtio disk: transitional (what Rehome's VMs have) and modern.
+VIRTIO_DISK_IDS = ("pci#ven_1af4&dev_1001&subsys_00021af4&rev_00", "pci#ven_1af4&dev_1001&subsys_00021af4",
+                   "pci#ven_1af4&dev_1001", "pci#ven_1af4&dev_1042&subsys_11001af4&rev_01",
+                   "pci#ven_1af4&dev_1042&subsys_11001af4", "pci#ven_1af4&dev_1042")
+SCSI_ADAPTER_CLASS = "{4D36E97B-E325-11CE-BFC1-08002BE10318}"
+STORE_ARCH = {"i386": "_x86_", "x86_64": "_amd64_", "aarch64": "_arm64_"}
+
+
+def staged_driver(g, sysroot: str, name: str, arch: str) -> str | None:
+    """``name``.sys in the driver store, where installers such as the SPICE guest tools and
+    virtio-win leave drivers for devices the VM does not have yet."""
+    repo = ci_path(g, f"{sysroot}/System32/DriverStore/FileRepository")
+    if not repo:
+        return None
+    tag = STORE_ARCH.get(arch, "")
+    found = []
+    for d in sorted(g.ls(repo)):
+        low = d.lower()
+        if low.startswith(f"{name}.inf_") and tag in low:
+            path = ci_path(g, f"{repo}/{d}/{name}.sys")
+            if path:
+                found.append(path)
+    return found[-1] if found else None
+
+
+def driver_available(g, root: str, name: str) -> bool:
+    """Windows has driver ``name``: installed for a device, or waiting in the driver store.
+    Call with the system mounted."""
+    sysroot = g.inspect_get_windows_systemroot(root)
+    return bool(ci_path(g, f"{sysroot}/System32/drivers/{name}.sys")
+                or staged_driver(g, sysroot, name, g.inspect_get_arch(root)))
+
+
+def prepare_virtio_disk_boot(g, root: str, nt: tuple[int, int]) -> list[str] | None:
+    """Make Windows load its virtio disk driver (viostor) at boot, before the disks become
+    virtio; None if Windows has no such driver.
+
+    Guest tools installers only put viostor in the driver store while the VM has no
+    virtio disk, and Windows then stops with 0x7B INACCESSIBLE_BOOT_DEVICE on the
+    first start from one. As virt-v2v does: viostor.sys in System32\\drivers, its
+    service boot-start, and (Vista/7) CriticalDeviceDatabase entries for the
+    virtio disk's PCI IDs. Windows completes the installation from the driver
+    store when it finds the disk. Call with the system mounted read-write.
+    """
+    sysroot = g.inspect_get_windows_systemroot(root)
+    drivers = ci_path(g, f"{sysroot}/System32/drivers")
+    installed = ci_path(g, f"{sysroot}/System32/drivers/viostor.sys")
+    staged = None if installed else staged_driver(g, sysroot, "viostor", g.inspect_get_arch(root))
+    if not drivers or not (installed or staged):
+        return None
+    changes = []
+    if staged:
+        g.cp(staged, f"{drivers}/viostor.sys")
+        changes.append(f"copied {staged} to {drivers}/viostor.sys")
+    system, _software = hive_paths(g, root)
+    ccs = control_set(g, root)
+    key = f"{ccs}\\Services\\viostor"
+    with Hive(g, system, write=True) as h:
+        if h.get(key, "ImagePath") is None:
+            h.set(key, "ImagePath", "system32\\drivers\\viostor.sys", REG_EXPAND_SZ)
+            h.set(key, "Group", "SCSI miniport", REG_SZ)
+            h.set(key, "Type", 1)
+            h.set(key, "ErrorControl", 1)
+            h.set(f"{key}\\Parameters\\PnpInterface", "5", 1)
+        h.set(key, "Start", 0)
+        h.delete_key(f"{key}\\StartOverride")
+        if nt < (6, 2):              # Windows 8 and later find boot drivers without it
+            cdd = f"{ccs}\\Control\\CriticalDeviceDatabase"
+            for dev_id in VIRTIO_DISK_IDS:
+                h.set(f"{cdd}\\{dev_id}", "Service", "viostor", REG_SZ)
+                h.set(f"{cdd}\\{dev_id}", "ClassGUID", SCSI_ADAPTER_CLASS, REG_SZ)
+        changes += [c.describe() for c in h.changes]
+    return changes
+
+
 @patch("windows.storage.mergeide", "Enable the in-box IDE drivers (MergeIDE)", families=WIN)
 def mergeide(ctx) -> PatchResult:
     """The classic MergeIDE fix for Windows NT 4/2000/XP/2003."""

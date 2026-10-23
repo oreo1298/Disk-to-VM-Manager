@@ -889,3 +889,41 @@ Reported with 0.3.6: the Windows 98 VM reached SYSLINUX ("BPB detection
 - 86Box was suggested as an alternative. It emulates period hardware closely,
   but the disk would still need a boot sector that can start IO.SYS, and 86Box
   needs BIOS ROM files obtained separately. Not integrated.
+
+## D38. Check Windows' drivers before switching to virtio
+
+Reported: Windows 7 (32-bit) blue-screened after the SPICE guest tools were
+installed and "Switch to faster devices" was applied.
+
+- Cause: the switch only changed the VM's settings (disks virtio, network
+  virtio, display QXL). Guest tools installers stage drivers in the driver
+  store. Windows installs a staged driver only for a device that is present,
+  and the VM had no virtio disk yet. So `viostor` was not set to load at
+  boot, and Windows could not reach its own disk: 0x7B
+  INACCESSIBLE_BOOT_DEVICE, the classic failure.
+- Now, before switching, Rehome opens the VM's disk offline (libguestfs):
+  - Disk: it copies `viostor.sys` from the driver store to
+    `System32\drivers` (unless it is already installed) and makes the
+    `viostor` service boot-start. On Vista/7 it also adds
+    CriticalDeviceDatabase entries for the virtio disk's PCI IDs (1AF4:1001
+    transitional, as in Rehome's VMs, and 1AF4:1042). This is what virt-v2v
+    does. When Windows finds the disk, it finishes installing the driver
+    from the store.
+  - Network: it switches only if `netkvm` is installed or staged.
+  - If Windows has neither driver for a device, that device keeps its
+    model and the user is told why. If nothing is left to switch, the
+    checkpoint is removed again.
+  - The registry changes go to `logs/patch.log`.
+- Reverting to the "Before switching to virtio" checkpoint now also puts
+  back the devices. Before, it reverted only the disk contents, so the VM
+  stayed on virtio and failed the same way. The devices are saved with the
+  checkpoint. Checkpoints from older versions fall back to the profile's
+  devices for what the switch changes.
+- Windows 8 and later have no CriticalDeviceDatabase. There, Rehome makes
+  the driver boot-start and relies on the driver store's database (which
+  staging fills in) for the device match. Untested with real Windows 8+.
+- Tested on a synthetic 32-bit Windows 7 disk (registry, files and the
+  device settings, plus revert). It cannot be booted here: there is no
+  Windows 7 to test with, so the boot itself is unverified. The QXL display
+  driver is not checked; without it, Windows uses its standard VGA driver
+  on QXL.

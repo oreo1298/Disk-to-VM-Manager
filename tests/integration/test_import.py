@@ -145,6 +145,65 @@ def test_windows_xp_mergeide_and_hal(images):
     assert sha256(src) == before
 
 
+def _windows7_x86(images, name, drivers):
+    return W.build(str(images / name), W.WinSpec(
+        product="Windows 7 Professional", version="6.1", build=7601, edition_id="Professional",
+        display_version="", arch="i386", scheme="mbr", boot_driver="msahci",
+        driver_store=drivers))
+
+
+def test_windows7_switch_to_virtio_makes_the_disk_driver_boot_start(images, monkeypatch):
+    """Regression: Windows 7 (32-bit) blue-screened after "Switch to faster devices". The SPICE
+    guest tools only put viostor in the driver store (the VM had no virtio disk yet), so
+    Windows had no driver for its boot disk (0x7B). Rehome now makes viostor boot-start
+    first, as virt-v2v does, and reverting the checkpoint also puts the old devices back."""
+    from rehome import importer
+    from rehome.vm import guest_tools, library, snapshots
+    monkeypatch.setattr(guest_tools, "_check_available", lambda cfg, changes: None)  # QXL module
+    src = _windows7_x86(images, "win7-x86-tools.img", ("viostor", "netkvm", "qxl"))
+    before = sha256(src)
+    a = importer.analyze([src])
+    assert a.profile.id == "windows-vista-7" and a.os.arch == "i386"
+    cfg = importer.run(a, importer.ImportOptions(mode="linked"))
+    assert (cfg.disks[0].bus, cfg.nics[0].model) == ("sata", "e1000")
+    log = guest_tools.switch_to_paravirt(cfg)
+    assert "Windows: the virtio disk driver (viostor) now loads at boot" in log, log
+    cfg = library.reload(cfg)
+    assert (cfg.disks[0].bus, cfg.nics[0].model, cfg.display.device) == \
+        ("virtio", "virtio-net-pci", "qxl-vga")
+    hive = "/Windows/System32/config/SYSTEM"
+    svc = "ControlSet001\\Services\\viostor"
+    assert overlay_hive_value(cfg, hive, svc, "Start") == 0
+    assert overlay_hive_value(cfg, hive, svc, "ImagePath") == "system32\\drivers\\viostor.sys"
+    assert overlay_hive_value(cfg, hive, svc, "Group") == "SCSI miniport"
+    cdd = "ControlSet001\\Control\\CriticalDeviceDatabase\\pci#ven_1af4&dev_1001&subsys_00021af4&rev_00"
+    assert overlay_hive_value(cfg, hive, cdd, "Service") == "viostor"
+    assert overlay_hive_value(cfg, hive, cdd, "ClassGUID") == "{4D36E97B-E325-11CE-BFC1-08002BE10318}"
+    assert overlay_has(cfg, None, "/Windows/System32/drivers/viostor.sys")
+    # Going back to the checkpoint undoes both the disk changes and the device switch.
+    snap = next(s for s in cfg.snapshots if s.kind == "pre-tools")
+    snapshots.revert(cfg, snap.id)
+    cfg = library.reload(cfg)
+    assert (cfg.disks[0].bus, cfg.nics[0].model, cfg.display.device, cfg.guest.paravirt) == \
+        ("sata", "e1000", "VGA", False)
+    assert overlay_hive_value(cfg, hive, svc, "Start") is None
+    assert sha256(src) == before
+
+
+def test_windows7_without_virtio_drivers_keeps_its_disk_and_network(images, monkeypatch):
+    """Guest tools without viostor/netkvm: the disks stay SATA and the network e1000."""
+    from rehome import importer
+    from rehome.vm import guest_tools, library
+    monkeypatch.setattr(guest_tools, "_check_available", lambda cfg, changes: None)
+    src = _windows7_x86(images, "win7-x86-qxl-only.img", ("qxl",))
+    cfg = importer.run(importer.analyze([src]), importer.ImportOptions(mode="linked"))
+    log = guest_tools.switch_to_paravirt(cfg)
+    assert any("disks stay SATA" in line and "viostor" in line for line in log), log
+    assert any("network stays e1000" in line and "netkvm" in line for line in log), log
+    cfg = library.reload(cfg)
+    assert (cfg.disks[0].bus, cfg.nics[0].model, cfg.display.device) == ("sata", "e1000", "qxl-vga")
+
+
 def test_windows98_and_msdos(images):
     from rehome import importer
     src98 = W.build_win9x(str(images / "win98.img"))

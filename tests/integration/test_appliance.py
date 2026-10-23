@@ -415,4 +415,45 @@ def test_boots_on_uefi(appliance, tmp_path):
     subprocess.run(["qemu-img", "create", "-f", "qcow2", "-b", str(out), "-F", "qcow2",
                     str(image)], check=True, capture_output=True)
     pc = _boot_and_check(cfg, image, tmp_path, uefi=True)
-    pc.stop()
+    try:
+        sh = pc.serial
+        # The build computer's time zone, and internet time.
+        _, zone = sh.run("cat /etc/timezone; readlink /etc/localtime")
+        from rehome.appliance import build
+        expect = build.host_timezone() or "Etc/UTC"
+        assert expect in zone and f"/usr/share/zoneinfo/{expect}" in zone, zone
+        rc, _ = sh.run("systemctl is-enabled systemd-timesyncd")
+        assert rc == 0
+        # The QXL display (Windows XP after its guest tools): the appliance's QEMU has it.
+        sh.run(f"rehome force-off {cfg.id}")
+        deadline = time.monotonic() + 180 * SLOW
+        while True:
+            _, st = sh.run("systemctl is-active rehome-maintenance")
+            if st.strip() == "active":
+                break
+            assert time.monotonic() < deadline, st
+            time.sleep(5)
+        rc, out = sh.run(f"rehome set {cfg.id} --display qxl-vga")
+        assert rc == 0, out
+        sh.run("rm -f /run/rehome/vm-started; systemctl --no-block start rehome-kiosk")
+        deadline = time.monotonic() + 600 * SLOW
+        while True:
+            rc, text = sh.run(f"rehome screen-text {cfg.id}")
+            if freedos.MARKER in text:
+                break
+            assert time.monotonic() < deadline, text
+            time.sleep(10)
+        _, display = sh.run("grep -o -- '-device qxl-vga[^ ]*' "
+                            "/var/lib/rehome/data/vms/*/logs/qemu.log | tail -1")
+        assert "qxl-vga" in display, display
+        sh.run(f"rehome type {cfg.id} vbe && rehome send-keys {cfg.id} ret")
+        time.sleep(30 * SLOW)
+        left, right = pc.picture_columns("uefi-qxl-vesa")
+        w, h = Computer.SCREEN
+        expect_w = h * 4 // 3
+        assert abs(left - (w - expect_w) // 2) <= 8 and abs(right - (w + expect_w) // 2) <= 8, \
+            (left, right)
+        _, alive = sh.run("pgrep -f '^/usr/bin/qemu-system' >/dev/null && echo alive")
+        assert "alive" in alive
+    finally:
+        pc.stop()

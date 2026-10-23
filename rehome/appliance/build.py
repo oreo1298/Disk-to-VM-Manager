@@ -15,6 +15,7 @@ appliance never depends on the computer it was built on.
 from __future__ import annotations
 
 import contextlib
+import os
 import shutil
 import time
 import unicodedata
@@ -23,6 +24,7 @@ from pathlib import Path
 
 from rehome import __version__, paths
 from rehome.appliance import base as base_mod
+from rehome.appliance import runtime
 from rehome.appliance import image, ubuntu
 from rehome.errors import RehomeError
 from rehome.inspect import gfs
@@ -58,6 +60,7 @@ class Options:
     refresh_base: bool = False          # rebuild the base system with current updates
     fmt: str = "raw"                    # raw (to write to a drive) / qcow2
     cpu_model: str = ""                 # "" = keep the VM's; e.g. "Westmere" for a fixed CPU
+    timezone: str = ""                  # "" = this computer's (e.g. "Europe/Berlin")
 
 
 @dataclass
@@ -84,6 +87,7 @@ def plan(cfg: VMConfig, opts: Options) -> Plan:
                               "state, then build the appliance.", code="saved-state")
     if cfg.machine.arch not in ("x86_64", "i386", "i686"):
         raise RehomeError("Appliances can only run PC (x86) VMs.", code="unsupported")
+    timezone_for(opts)                  # a mistyped --timezone fails before anything is built
     p = Plan(vm=cfg)
     for d in cfg.disks:
         src = cfg.resolve(d.file)
@@ -186,6 +190,36 @@ def fstab(root_uuid: str, esp_uuid: str, data_uuid: str) -> str:
             f"UUID={data_uuid}  {HOME}  ext4  defaults,nofail  0 2\n")
 
 
+def host_timezone(localtime: Path = Path("/etc/localtime"),
+                  timezone_file: Path = Path("/etc/timezone")) -> str:
+    """This computer's time zone as an IANA name ("Europe/Berlin"), "" if unknown."""
+    tz = os.environ.get("TZ", "").lstrip(":")
+    if tz and "/" in tz and not tz.startswith("/"):
+        return tz
+    try:
+        target = os.path.realpath(localtime)
+    except OSError:
+        target = ""
+    if "/zoneinfo/" in target:
+        name = target.split("/zoneinfo/", 1)[1]
+        for prefix in ("posix/", "right/"):
+            name = name.removeprefix(prefix)
+        return name
+    try:
+        return timezone_file.read_text().strip()
+    except OSError:
+        return ""
+
+
+def timezone_for(opts: Options) -> str:
+    name = opts.timezone or host_timezone() or "Etc/UTC"
+    if opts.timezone and not runtime.valid_timezone(name) and runtime.ZONEINFO.is_dir():
+        raise RehomeError(f"\"{name}\" is not a time zone.",
+                          fix="Use a name such as Europe/Berlin or America/New_York "
+                              "(`timedatectl list-timezones` lists them).", code="timezone")
+    return name
+
+
 def appliance_config(cfg: VMConfig, opts: Options, base: base_mod.Base) -> dict:
     return {
         "appliance": {"vm": cfg.id, "name": cfg.name, "built": time.strftime("%Y-%m-%d %H:%M"),
@@ -193,6 +227,7 @@ def appliance_config(cfg: VMConfig, opts: Options, base: base_mod.Base) -> dict:
                       "password": bool(opts.maintenance_password)},
         "kiosk": {"usb_auto": opts.usb_auto, "countdown": 3},
         "network": {"mode": opts.network},
+        "time": {"zone": timezone_for(opts)},
     }
 
 
@@ -318,6 +353,7 @@ def build(cfg: VMConfig, opts: Options, progress=None) -> Path:
             g.mkdir_p("/etc/rehome")
             g.write(CONFIG, toml.dumps(appliance_config(cfg, opts, base)).encode())
             g.write("/etc/fstab", fstab(uuids[3], uuids[2], uuids[4]).encode())
+            _set_timezone(g, timezone_for(opts))
             g.write("/etc/hostname", b"rehome\n")
             g.write("/etc/hosts", b"127.0.0.1 localhost\n127.0.1.1 rehome\n"
                                   b"::1 localhost ip6-localhost ip6-loopback\n")
@@ -351,6 +387,18 @@ def build(cfg: VMConfig, opts: Options, progress=None) -> Path:
     finally:
         shutil.rmtree(work, ignore_errors=True)
     return out
+
+
+def _set_timezone(g, zone: str) -> None:
+    """The appliance's clock shows local time like the computer it was built on.
+
+    Windows (and DOS) VMs keep their clock in local time, which QEMU takes from
+    the appliance's time zone; without one, they would show UTC as local time.
+    """
+    if not g.exists(f"/usr/share/zoneinfo/{zone}"):
+        zone = "Etc/UTC"
+    g.ln_sf(f"/usr/share/zoneinfo/{zone}", "/etc/localtime")
+    g.write("/etc/timezone", f"{zone}\n".encode())
 
 
 def _vm_dirname(cfg: VMConfig) -> str:
@@ -388,6 +436,8 @@ chmod 0750 /var/lib/rehome
 # Services: the appliance's own, networking; no text logins.
 systemctl enable rehome-boot.service rehome-firstboot.service
 systemctl enable systemd-networkd.service systemd-resolved.service iwd.service
+# Internet time, as soon as the computer is online (the hardware clock follows it).
+systemctl enable systemd-timesyncd.service
 systemctl mask systemd-networkd-wait-online.service
 # Ubuntu clears GRUB's boot-failure flags once Linux is up; the appliance
 # clears recordfail itself, once the VM is on screen.

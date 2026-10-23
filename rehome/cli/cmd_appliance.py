@@ -37,6 +37,9 @@ def register(sub) -> None:
     q.add_argument("--cpu-model", default="",
                    help="a fixed processor model for the VM (e.g. Westmere), so it sees the same "
                         "processor on every computer; default: keep the VM's")
+    q.add_argument("--timezone", default="", metavar="ZONE",
+                   help="the appliance's time zone, e.g. Europe/Berlin (default: this "
+                        "computer's); Windows VMs show local time from it")
     q.add_argument("--kernel-args", default="",
                    help="extra Linux kernel arguments for every boot entry")
     q.add_argument("--format", choices=("raw", "qcow2"), default="raw",
@@ -94,7 +97,8 @@ def cmd_build(args) -> int:
     opts = build.Options(output=Path(args.output), include_media=not args.no_media,
                          maintenance_password=_password(args), network=args.network,
                          usb_auto=not args.no_usb_auto, kernel_args=args.kernel_args,
-                         refresh_base=args.refresh, fmt=args.format, cpu_model=args.cpu_model)
+                         refresh_base=args.refresh, fmt=args.format, cpu_model=args.cpu_model,
+                         timezone=args.timezone)
     pl = build.plan(cfg, opts)
     print(f"Appliance for \"{cfg.name}\" → {opts.output}")
     for d_id, src, est in pl.disks:

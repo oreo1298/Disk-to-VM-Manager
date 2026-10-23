@@ -1,4 +1,5 @@
 import lzma
+import os
 from pathlib import Path
 
 import pytest
@@ -348,3 +349,82 @@ def test_kiosk_uses_qemus_own_nat(monkeypatch):
     monkeypatch.setattr(runtime.subprocess, "run", run)
     assert runtime.kiosk() == 0
     assert seen["env"]["REHOME_NO_PASST"] == "1"
+
+
+def _zoneinfo(tmp_path: Path) -> Path:
+    zi = tmp_path / "zoneinfo"
+    for name in ("Europe/Berlin", "America/New_York", "America/Argentina/Buenos_Aires", "Etc/UTC"):
+        (zi / name).parent.mkdir(parents=True, exist_ok=True)
+        (zi / name).write_bytes(b"TZif2")
+    (zi / "zone1970.tab").write_text(
+        "# comment\nDE,DK\t+5230+01322\tEurope/Berlin\nUS\t+404251-0740023\tAmerica/New_York\t"
+        "Eastern\nAR\t-3436-05827\tAmerica/Argentina/Buenos_Aires\tBuenos Aires (BA, CF)\n")
+    return zi
+
+
+def test_host_timezone(tmp_path, monkeypatch):
+    zi = _zoneinfo(tmp_path)
+    monkeypatch.delenv("TZ", raising=False)
+    link = tmp_path / "localtime"
+    link.symlink_to(zi / "America" / "New_York")
+    assert build.host_timezone(link, tmp_path / "none") == "America/New_York"
+    plain = tmp_path / "copied-localtime"
+    plain.write_bytes(b"TZif2")                         # a copy, not a link: /etc/timezone
+    (tmp_path / "timezone").write_text("Europe/Berlin\n")
+    assert build.host_timezone(plain, tmp_path / "timezone") == "Europe/Berlin"
+    monkeypatch.setenv("TZ", ":Europe/Berlin")
+    assert build.host_timezone(link, tmp_path / "none") == "Europe/Berlin"
+
+
+def test_set_and_find_timezones(tmp_path):
+    zi = _zoneinfo(tmp_path)
+    etc = tmp_path / "etc"
+    etc.mkdir()
+    assert runtime.timezone(etc) == "Etc/UTC"
+    runtime.set_timezone("America/New_York", etc, zi)
+    assert os.readlink(etc / "localtime") == str(zi / "America" / "New_York")
+    assert runtime.timezone(etc) == "America/New_York"
+    runtime.set_timezone("Europe/Berlin", etc, zi)              # replaced in place
+    assert os.readlink(etc / "localtime").endswith("Europe/Berlin")
+    for bad in ("Mars/Olympus", "../etc/passwd", "/etc/passwd", "Europe/../../x", ""):
+        assert not runtime.valid_timezone(bad, zi)
+        with pytest.raises(RehomeError):
+            runtime.set_timezone(bad, etc, zi)
+    assert runtime.find_timezones("berlin", zi) == ["Europe/Berlin"]
+    assert runtime.find_timezones("buenos aires", zi) == ["America/Argentina/Buenos_Aires"]
+    assert runtime.find_timezones("america", zi) == ["America/Argentina/Buenos_Aires",
+                                                     "America/New_York"]
+
+
+def test_build_checks_the_timezone(monkeypatch):
+    monkeypatch.setattr(build, "host_timezone", lambda *a: "Europe/Berlin")
+    assert build.timezone_for(build.Options(output=Path("x"))) == "Europe/Berlin"
+    assert build.timezone_for(build.Options(output=Path("x"), timezone="Etc/UTC")) == "Etc/UTC"
+    if runtime.ZONEINFO.is_dir():
+        with pytest.raises(RehomeError, match="not a time zone"):
+            build.timezone_for(build.Options(output=Path("x"), timezone="Mars/Olympus"))
+
+
+def test_kiosk_says_what_happens_next(monkeypatch):
+    """The text screen must not keep showing "Starting ..." while the computer turns off."""
+    import types
+    cfg = types.SimpleNamespace(name="Old PC", machine=types.SimpleNamespace(memory_mib=512, cpus=1))
+    said = []
+    results = iter([{"outcome": "restart-vm"}, {"outcome": "poweroff"}])
+    monkeypatch.setattr(runtime, "load_config", lambda: {"kiosk": {"countdown": 0}})
+    monkeypatch.setattr(runtime, "the_vm", lambda: cfg)
+    monkeypatch.setattr(runtime, "cmdline", lambda text=None: {})
+    monkeypatch.setattr(runtime, "_disk_numbers", lambda c: (10 * 2**30, 0))
+    monkeypatch.setattr(runtime, "_say", lambda lines: said.append(lines[0]))
+    monkeypatch.setattr(runtime, "_wait_key", lambda s: "")
+    monkeypatch.setattr(runtime, "_write_json", lambda path, data: None)
+    monkeypatch.setattr(runtime, "_read_json", lambda path: next(results))
+    monkeypatch.setattr(runtime.hardware, "gather", lambda: None)
+    monkeypatch.setattr(runtime.hardware, "start_checks",
+                        lambda *a, **k: types.SimpleNamespace(notes=[]))
+    monkeypatch.setattr(runtime.hardware, "has_gpu_acceleration", lambda: True)
+    monkeypatch.setattr(runtime.hardware, "screen_size", lambda: (1920, 1080))
+    monkeypatch.setattr(runtime.subprocess, "run",
+                        lambda argv, env=None, check=False: types.SimpleNamespace(returncode=0))
+    assert runtime.kiosk() == 0
+    assert said[-2:] == ["Restarting Old PC...", "Turning off..."]

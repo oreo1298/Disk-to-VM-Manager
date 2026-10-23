@@ -28,6 +28,11 @@ hpet = false
 agent = false
 vdagent = false
 
+# After the SPICE guest tools for XP are installed (rehome tools insert): QXL graphics,
+# with resolutions up to 2560x1600 (the Cirrus card stops at 1280x1024).
+[paravirt]
+display = "qxl-vga"
+
 [create]
 disk_size = "20G"
 

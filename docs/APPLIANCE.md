@@ -41,6 +41,7 @@ Options:
 | `--no-usb-auto` | Do not give plugged-in USB devices to the VM automatically. |
 | `--format qcow2` | A qcow2 image for testing in a VM instead of a raw image for a drive. |
 | `--cpu-model` | A fixed processor model for the VM (e.g. `Westmere`). By default the VM keeps its own setting; VMs set to "host" see a different processor on each computer. |
+| `--timezone` | The appliance's time zone, e.g. `Europe/Berlin` (default: this computer's). Windows VMs show its local time. |
 | `--kernel-args` | Extra Linux arguments for every boot entry (e.g. `console=ttyS0`). |
 
 The image is sparse: it takes little space on your disk, but writing it to
@@ -103,10 +104,29 @@ and press F10; or choose **with basic graphics**.
 The VM has a wired network card (Windows shows "Ethernet", never a list of
 Wi-Fi networks). Its connection goes out through the computer's own
 wired or Wi-Fi connection, whichever is up, through NAT. Connect the
-computer to Wi-Fi once in the maintenance console (**Network and Wi-Fi**);
+computer to Wi-Fi once in the maintenance console (**Network, Wi-Fi and
+time zone**);
 it reconnects by itself on later starts. The VM can start before the
 connection is up, or while it changes; it gets online as soon as the
 computer does.
+
+### Clock and time zone
+
+The appliance uses the time zone of the computer it was built on
+(`--timezone` chooses another), and sets its clock from the internet once
+it is online. Windows and DOS VMs keep their clock in local time, which
+they take from the appliance's time zone each time they start. Change the
+zone in the maintenance console (**Network, Wi-Fi and time zone**) if the
+appliance moves.
+
+### Drivers
+
+None are needed. The VM sees the same virtual hardware on every computer
+(the one it was given in Rehome), never the computer's own, so it needs no
+new drivers when the appliance moves to another computer. Optional guest
+tools work as in Rehome (README, "Guest tools"); install them in Rehome
+before building the appliance. Windows XP needs them for resolutions above
+1280×1024 (the QXL display; the appliance's QEMU includes it).
 
 ### If the VM stops unexpectedly
 
@@ -136,7 +156,8 @@ the top):
 1. Start the VM
 2. Checkpoints — take one, go back to one, delete one
 3. USB devices — see which devices go to the VM; exclude or include one
-4. Network and Wi-Fi — connect to a Wi-Fi network, test the connection
+4. Network, Wi-Fi and time zone — connect to a Wi-Fi network, test the
+   connection, change the time zone
 5. Hardware report — processor, virtualization, memory, graphics, displays, sound, network
 6. Save diagnostics to a USB stick — logs and reports in one `.tar.gz` file
 7. Shell — a root shell for repairs (`rehome --help` works there)

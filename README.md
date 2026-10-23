@@ -16,7 +16,7 @@ Rehome is a Linux desktop app for QEMU/KVM. It does two jobs:
 
 Everything the GUI does is also available on the command line (`rehome --help`).
 
-> **Status: 0.3.1, early release.** The engine, CLI and GUI work, and they are
+> **Status: 0.3.2, early release.** The engine, CLI and GUI work, and they are
 > tested on synthetic disks and on real FreeDOS, ReactOS and Ubuntu guests. Real
 > Windows and 9x installations were not tested yet; see
 > [What has been tested](#what-has-been-tested).
@@ -210,13 +210,19 @@ Rehome warns about two cases and decides nothing for you:
   hibernated session. It is discarded only in the VM's overlay, never on the
   disk.
 
-After the first successful boot, the Summary tab offers the guest tools:
+No drivers are needed to start: Rehome gives each system virtual hardware it
+has built-in drivers for (Windows 11: SATA disk, Intel network card, standard
+VGA, Intel HD Audio, USB 3; Windows XP: IDE, Realtek network card, Cirrus
+graphics, AC'97 sound, USB 1.1). The guest tools are optional and make it
+faster or nicer. After the first successful boot, the Summary tab offers them:
 
-- virtio-win for Windows, downloaded from the Fedora project,
+- virtio-win for Windows Vista and later, downloaded from the Fedora project,
+- the SPICE guest tools for Windows XP and Server 2003 (the QXL display
+  driver: resolutions up to 2560×1600 instead of the Cirrus card's 1280×1024),
 - the SPICE agent and the QEMU guest agent for Linux.
 
-It then offers to switch the VM to fast paravirtual (virtio) devices, with a
-checkpoint first.
+It then offers to switch the VM to the faster devices (virtio; QXL graphics
+for XP), with a checkpoint first.
 
 ## Creating a VM
 

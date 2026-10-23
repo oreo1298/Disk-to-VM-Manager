@@ -17,6 +17,7 @@ import time
 from pathlib import Path
 
 from rehome.appliance import hardware, runtime
+from rehome.errors import RehomeError
 
 REHOME = "/usr/local/bin/rehome"
 USB_MOUNT = "/mnt/rehome-usb"
@@ -77,6 +78,8 @@ def header(conf: dict, vm_name: str, vm_state: str) -> None:
     print(f"  Built:    {a.get('built', '?')} with Rehome {a.get('rehome_version', '?')} "
           f"on {a.get('system', '?')}")
     print(f"  Network:  {_network_summary()}")
+    print(f"  Clock:    {time.strftime('%Y-%m-%d %H:%M')} ({runtime.timezone()}"
+          f"{', internet time' if _time_synced() else ''})")
     if runtime.MESSAGE.exists():
         msg = runtime.MESSAGE.read_text().strip()
         if msg:
@@ -93,7 +96,7 @@ MENU = [
     ("1", "Start the VM"),
     ("2", "Checkpoints"),
     ("3", "USB devices"),
-    ("4", "Network and Wi-Fi"),
+    ("4", "Network, Wi-Fi and time zone"),
     ("5", "Hardware report"),
     ("6", "Save diagnostics to a USB stick"),
     ("7", "Shell (root; type exit to come back)"),
@@ -227,6 +230,31 @@ def usb_devices() -> None:
 
 # --- network ---------------------------------------------------------------------------------
 
+def _time_synced() -> bool:
+    return _out(["timedatectl", "show", "-p", "NTPSynchronized", "--value"]).strip() == "yes"
+
+
+def choose_timezone() -> None:
+    print(f"\n  Time zone now: {runtime.timezone()}. Windows and DOS VMs show its local time.")
+    text = _ask("  New time zone or part of its name, e.g. Berlin or New_York (Enter: keep): ")
+    if not text:
+        return
+    names = [text] if runtime.valid_timezone(text) else runtime.find_timezones(text)
+    if len(names) > 1:
+        for i, n in enumerate(names[:30], start=1):
+            print(f"  {i:2}  {n}")
+        c = _ask("  Number (Enter: keep): ")
+        names = [names[int(c) - 1]] if c.isdigit() and 1 <= int(c) <= min(len(names), 30) else []
+    if not names:
+        _pause("No such time zone. Press Enter.")
+        return
+    try:
+        runtime.set_timezone(names[0])
+        _pause(f"The time zone is now {names[0]}. Press Enter.")
+    except RehomeError as e:
+        _pause(f"{e.message} Press Enter.")
+
+
 def _wifi_device() -> str:
     for n in sorted(Path("/sys/class/net").glob("*")):
         if (n / "wireless").exists() or (n / "phy80211").exists():
@@ -237,13 +265,14 @@ def _wifi_device() -> str:
 def network() -> None:
     while True:
         _clear()
-        print("Network\n")
+        print("Network, Wi-Fi and time zone\n")
         _run(["ip", "-brief", "address"])
         wifi = _wifi_device()
         print("\nWired connections are set up automatically.")
         if wifi:
             print(f"\n  1  Connect to a Wi-Fi network ({wifi})\n  2  Forget a Wi-Fi network")
-        print("  3  Test the connection\n  Enter  Back")
+        print("  3  Test the connection")
+        print(f"  4  Time zone ({runtime.timezone()})\n  Enter  Back")
         c = _ask("\n  Choose: ")
         if c == "1" and wifi:
             _run(["iwctl", "station", wifi, "scan"])
@@ -266,6 +295,8 @@ def network() -> None:
         elif c == "3":
             _run(["ping", "-c", "3", "-W", "3", "archive.ubuntu.com"])
             _pause()
+        elif c == "4":
+            choose_timezone()
         else:
             return
 

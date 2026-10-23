@@ -11,7 +11,7 @@
 %global __brp_python_bytecompile %{nil}
 
 Name:           rehome
-Version:        0.3.1
+Version:        0.3.2
 Release:        1%{?dist}
 Summary:        Turn installed operating systems into QEMU/KVM virtual machines
 License:        GPL-3.0-or-later
@@ -139,6 +139,10 @@ python3 packaging/layout.py install \
 %{_datadir}/icons/hicolor/symbolic/apps/io.github.oreo1298.Rehome-symbolic.svg
 
 %changelog
+* Fri Oct 23 2026 Rehome contributors - 0.3.2-1
+- Appliances: time zone of the build computer and internet time; clean power-off screen.
+- Windows XP: SPICE guest tools and QXL graphics for resolutions up to 2560x1600.
+
 * Thu Oct 22 2026 Rehome contributors - 0.3.1-1
 - Appliances: network through Wi-Fi that connects after the VM started; built-in
   USB devices and Bluetooth stay with the appliance; clearer crash reports.

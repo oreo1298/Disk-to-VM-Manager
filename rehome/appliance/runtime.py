@@ -44,6 +44,50 @@ GRUBENV = "/boot/grub/grubenv"
 KEY_POWER = 116
 
 
+ZONEINFO = Path("/usr/share/zoneinfo")
+
+
+def valid_timezone(name: str, zoneinfo: Path = ZONEINFO) -> bool:
+    """An IANA zone name tzdata has (and nothing that escapes the zoneinfo folder)."""
+    if not name or name.startswith(("/", ".")) or ".." in name.split("/"):
+        return False
+    return (zoneinfo / name).is_file()
+
+
+def timezone(etc: Path = Path("/etc")) -> str:
+    try:
+        return (etc / "timezone").read_text().strip() or "Etc/UTC"
+    except OSError:
+        return "Etc/UTC"
+
+
+def set_timezone(name: str, etc: Path = Path("/etc"), zoneinfo: Path = ZONEINFO) -> None:
+    """The appliance's time zone; Windows and DOS VMs show its local time (root)."""
+    if not valid_timezone(name, zoneinfo):
+        raise RehomeError(f"\"{name}\" is not a time zone.",
+                          fix="Use a name such as Europe/Berlin or America/New_York.")
+    tmp = etc / ".localtime.rehome"
+    tmp.unlink(missing_ok=True)
+    os.symlink(zoneinfo / name, tmp)
+    os.replace(tmp, etc / "localtime")
+    (etc / "timezone").write_text(name + "\n")
+
+
+def find_timezones(text: str, zoneinfo: Path = ZONEINFO) -> list[str]:
+    """Zone names containing ``text`` (case and spaces ignored), from tzdata's list."""
+    want = text.lower().replace(" ", "_")
+    names = set()
+    for table in ("zone1970.tab", "zone.tab"):
+        try:
+            for line in (zoneinfo / table).read_text().splitlines():
+                f = line.split("\t")
+                if len(f) >= 3 and not line.startswith("#"):
+                    names.add(f[2])
+        except OSError:
+            continue
+    return sorted(n for n in names if want in n.lower())
+
+
 def load_config() -> dict:
     try:
         return toml.load(CONFIG)
@@ -249,6 +293,7 @@ def kiosk() -> int:
     _say([f"Starting {cfg.name}...", ""] + [f"! {n}" for n in checks.notes]
          + ["", "Press M for the maintenance console."])
     if _wait_key(countdown) == "m":
+        _say(["Opening the maintenance console..."])
         _write_json(INTENT, {"outcome": "maintenance"})
         return 0
     _say([f"Starting {cfg.name}..."])
@@ -284,6 +329,7 @@ def kiosk() -> int:
         result = _read_json(RESULT)
         if result and result.get("outcome") == "restart-vm" and restarts < 20:
             restarts += 1
+            _say([f"Restarting {cfg.name}..."])
             continue
         if result or env.get("WLR_RENDERER") == "pixman":
             break
@@ -295,8 +341,13 @@ def kiosk() -> int:
                   "message": f"The screen could not be set up (cage exited with code {rc}). "
                              "Try \"basic graphics\" in the boot menu (press Esc while the "
                              "computer starts)."}
+    # The text screen still shows "Starting ..." from before the VM's window opened.
+    _say([NEXT_STEP.get(result.get("outcome"), "Opening the maintenance console...")])
     _write_json(INTENT, result)
     return 0
+
+
+NEXT_STEP = {"poweroff": "Turning off...", "reboot": "Restarting..."}
 
 
 # --- the session (inside cage) --------------------------------------------------------------

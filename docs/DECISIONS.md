@@ -721,3 +721,39 @@ after a few seconds.
   still reaches the VM, QEMU's command line has `-netdev user` and no
   passt runs, and killing QEMU opens the maintenance console with the new
   message.
+
+## D33. Appliance clock, Windows XP resolutions, the screen at power-off
+
+Reported after D32: Windows 11's clock was wrong again after each restart;
+Windows XP could not use 1920×1080; while the computer turned off, the
+screen briefly showed "Starting <VM>".
+
+- **Clock.** Windows (and DOS) profiles keep the VM's hardware clock in
+  local time (`-rtc base=localtime`), which QEMU takes from the host's time
+  zone. On a desktop that is the user's zone; the appliance had none (UTC),
+  so Windows showed UTC as local time. Its own internet time correction
+  lasted only until the VM restarted, since every start is a new QEMU that
+  reads the host clock again. Now the appliance gets the build computer's
+  time zone (`/etc/localtime`, `--timezone` to override, changeable in the
+  maintenance console) and `systemd-timesyncd` sets the clock once online
+  (the kernel then keeps the hardware clock in UTC, also fixing laptops
+  whose clock was left in local time by Windows).
+- **XP resolutions.** XP's built-in Cirrus driver stops at 1280×1024; the
+  only other XP drivers for QEMU's cards are QXL's, in the SPICE guest
+  tools 0.65 that libosinfo lists for Windows XP (QXL offers up to
+  2560×1600 with its default 16 MB of video memory, 1920×1080 included).
+  The guest tools step now gives XP/2003 those tools on a disc (current
+  virtio-win no longer supports XP; it was offered before), and "switch to
+  faster devices" moves XP to `qxl-vga` (checkpoint first). The switch is
+  refused when this computer's QEMU lacks QXL (Debian/Ubuntu ship it in
+  `qemu-system-modules-spice`, which the appliance now installs) instead of
+  silently falling back to plain VGA. Not tested with Windows XP itself:
+  the download host is unreachable from the development sandbox; the
+  appliance test runs a VM on QXL (VGA and VBE modes).
+- **Power-off screen.** The kiosk prints "Starting <VM>" on the text screen
+  before the VM's window covers it; when the window closes, that text was
+  visible again. The kiosk now replaces it with what happens next
+  ("Turning off...", "Restarting <VM>...", "Opening the maintenance
+  console...").
+- **Drivers in general**: appliances need none (the guest sees the same
+  virtual hardware everywhere); documented in APPLIANCE.md "Drivers".

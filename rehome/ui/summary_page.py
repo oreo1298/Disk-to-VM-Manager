@@ -245,10 +245,12 @@ class SummaryPage(Gtk.ScrolledWindow):
                                              self.page.window.toast("Command copied")))
             r.add_suffix(b)
         g.add(r)
-        if guest_tools.paravirt_changes(cfg) and not cfg.guest.paravirt:
-            r = Adw.ActionRow(title="Switch to virtio devices",
-                              subtitle="Once the guest tools are installed, use the fast paravirtual "
-                                       "disk, network and display. A checkpoint is taken first.")
+        changes = guest_tools.paravirt_changes(cfg)
+        if changes and not cfg.guest.paravirt:
+            r = Adw.ActionRow(title="Switch to faster devices",
+                              subtitle="Once the guest tools are installed: "
+                                       + guest_tools.describe_changes(changes)
+                                       + ". A checkpoint is taken first.")
             b = Gtk.Button(label="Switch…", valign=Gtk.Align.CENTER)
             b.connect("clicked", lambda *_: self._switch())
             r.add_suffix(b)
@@ -257,10 +259,10 @@ class SummaryPage(Gtk.ScrolledWindow):
     def _tools_iso(self, plan):
         cfg = self.page.cfg
         if plan.needs_download:
-            confirm(self, "Download virtio-win?",
-                    f"Rehome will download the driver disc from the Fedora project:\n{guest_tools.VIRTIO_WIN_URL}",
+            confirm(self, "Download the guest tools?",
+                    f"Rehome will download them from:\n{plan.url}",
                     "Download", lambda: run_async(
-                        guest_tools.download_virtio_win,
+                        lambda: guest_tools.download_tools(cfg),
                         lambda iso: (guest_tools.attach_tools(cfg, iso), self.page.reload(),
                                      self.page.window.toast("Driver disc inserted")),
                         lambda e: show_error(self, e)))
@@ -271,7 +273,7 @@ class SummaryPage(Gtk.ScrolledWindow):
 
     def _switch(self):
         cfg = self.page.cfg
-        confirm(self, "Switch to virtio devices?",
+        confirm(self, "Switch to faster devices?",
                 "Only do this after the guest tools/drivers are installed. If the VM does not start "
                 "afterwards, revert to the checkpoint \"Before switching to virtio\".", "Switch",
                 lambda: run_async(lambda: guest_tools.switch_to_paravirt(cfg),

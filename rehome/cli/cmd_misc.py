@@ -54,7 +54,7 @@ def cmd_status(args) -> int:
     elif changes:
         print(bold("Virtual devices: ") + "once the drivers are installed, run "
               f"`rehome tools paravirt \"{cfg.name}\"` to switch to: "
-              + ", ".join(f"{k.replace('_', ' ')} {v}" for k, v in changes.items()) + ".")
+              + guest_tools.describe_changes(changes) + ".")
     return 0
 
 
@@ -77,11 +77,13 @@ def cmd_insert(args) -> int:
     iso = args.iso or plan.iso
     if not iso:
         printer = ProgressPrinter()
-        printer.status("Downloading virtio-win.iso from fedorapeople.org")
-        iso = guest_tools.download_virtio_win(progress=printer)
+        printer.status(f"Downloading {plan.url}")
+        iso = guest_tools.download_tools(cfg, progress=printer)
         printer.finish()
     guest_tools.attach_tools(cfg, iso)
-    print(f"Inserted {iso}. In the VM, open the CD drive and run virtio-win-guest-tools.exe.")
+    run = "spice-guest-tools-0.65.exe (see README.TXT)" if guest_tools.legacy_windows(cfg) \
+        else "virtio-win-guest-tools.exe"
+    print(f"Inserted {iso}. In the VM, open the CD drive and run {run}.")
     return 0
 
 

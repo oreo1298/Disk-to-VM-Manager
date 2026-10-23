@@ -182,7 +182,9 @@ class DisplayClient(GObject.Object):
         self.keyboard = self._proxy(path, "org.qemu.Display1.Keyboard")
         self.mouse = self._proxy(path, "org.qemu.Display1.Mouse")
         ab = self.mouse.get_cached_property("IsAbsolute")
-        self.absolute = bool(ab.unpack()) if ab else True
+        # Not `if ab`: a boolean GLib.Variant is falsy when it holds False, which made
+        # every PS/2-only guest (DOS, Windows 9x) look absolute: its cursor never moved.
+        self.absolute = bool(ab.unpack()) if ab is not None else True
         self.mouse.connect("g-properties-changed", self._mouse_props)
         # QEMU (8.x) does not send a new Scanout when the guest changes video
         # mode; only the console's Width/Height properties change.

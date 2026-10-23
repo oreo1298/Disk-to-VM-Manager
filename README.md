@@ -16,7 +16,7 @@ Rehome is a Linux desktop app for QEMU/KVM. It does two jobs:
 
 Everything the GUI does is also available on the command line (`rehome --help`).
 
-> **Status: 0.3.8, early release.** The engine, CLI and GUI work, and they are
+> **Status: 0.3.9, early release.** The engine, CLI and GUI work, and they are
 > tested on synthetic disks and on real FreeDOS, ReactOS and Ubuntu guests. Real
 > Windows and 9x installations were not tested yet; see
 > [What has been tested](#what-has-been-tested).
@@ -382,7 +382,8 @@ scripts. Add `-v` to any command for technical details.
 | Windows asks to be activated again | Expected: the virtual hardware differs from the PC. Reactivate with your own licence; Rehome never bypasses activation. |
 | Old Windows (9x/2000/XP) runs too fast, hangs or crashes on start | Use the profile's defaults: emulation (TCG) for 9x, at most 512 MB of RAM, a Pentium-class CPU model. |
 | The console stays black | The guest may have switched its display off. Press a key in the console, or check **Logs**. `rehome screenshot VM x.png` shows what QEMU itself sees. |
-| Mouse is offset or "stuck" in the console | Press Ctrl+Alt to release it. Guests without tablet or SPICE-agent support use relative mouse mode, which GTK 4 cannot fully confine on all desktops. |
+| The mouse cursor does not move in DOS or Windows 9x (Rehome 0.3.8 and older) | Update Rehome. Older versions treated a PS/2 mouse as absolute, so the cursor never moved. |
+| The mouse is captured in DOS or Windows 9x | These systems only have a relative PS/2 mouse. Click in the console to capture it: the guest cursor jumps to where you clicked. It lines up again whenever you reach an edge of the screen. Press Ctrl+Alt to release it. GTK 4 cannot hold the hidden pointer inside the window, so if the cursors drift apart, move to an edge. |
 | No network in the VM | NAT uses `passt` when it is installed, otherwise QEMU's built-in NAT. For a bridge, see **Settings → Network** (needs `qemu-bridge-helper` set up by your distribution). |
 | A disk is "in use" and cannot be imported | Unmount its partitions, turn off swap on it, or deactivate LVM/RAID on it. Rehome never imports a disk the host is using. |
 | Something else | **Logs → Copy Diagnostics**, then open an issue at https://github.com/oreo1298/Disk-to-VM-Manager/issues. |

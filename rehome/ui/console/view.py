@@ -14,6 +14,8 @@ from gi.repository import Gdk, GLib, GObject, Graphene, Gsk, Gtk  # noqa: E402
 
 from rehome.ui.console.dbus_display import DisplayClient  # noqa: E402
 from rehome.ui.console.keymap import QNUM, gdk_keycode_to_qnum  # noqa: E402
+from rehome.ui.console import relmouse  # noqa: E402
+from rehome.ui.console.relmouse import RelMouse  # noqa: E402
 
 log = logging.getLogger(__name__)
 
@@ -43,6 +45,8 @@ class DisplayView(Gtk.Widget):
         self.grabbed = False
         self._pressed: set[int] = set()
         self._last_motion: tuple[float, float] | None = None
+        self._rel = RelMouse()
+        self._rel_timer = 0
         self._resize_source = 0
         self._last_ui_info = (0, 0)
         self.set_cursor(Gdk.Cursor.new_from_name("default", None))
@@ -52,6 +56,7 @@ class DisplayView(Gtk.Widget):
         client.connect("dmabuf-update", self._on_dmabuf_update)
         client.connect("cursor-define", self._on_cursor)
         client.connect("mouse-set", self._on_mouse_set)
+        client.connect("mouse-mode", self._on_mouse_mode)
         client.connect("disabled", lambda *_: self._clear())
 
         keys = Gtk.EventControllerKey()
@@ -61,7 +66,7 @@ class DisplayView(Gtk.Widget):
         self.add_controller(keys)
         motion = Gtk.EventControllerMotion()
         motion.connect("motion", self._motion)
-        motion.connect("leave", lambda *_: setattr(self, "_last_motion", None))
+        motion.connect("leave", self._leave)
         self.add_controller(motion)
         click = Gtk.GestureClick(button=0)
         click.connect("pressed", self._button, True)
@@ -258,30 +263,80 @@ class DisplayView(Gtk.Widget):
             if pos:
                 self.client.mouse_abs(*pos)
         elif self.grabbed:
-            if self._last_motion is not None:
-                lay = self._layout()
-                f = self.client.width / lay[2] if lay and lay[2] else 1
-                dx, dy = (x - self._last_motion[0]) * f, (y - self._last_motion[1]) * f
-                if dx or dy:
-                    self.client.mouse_rel(round(dx), round(dy))
+            lay = self._layout()
+            if self._last_motion is not None and lay and lay[2]:
+                f = self.client.width / lay[2]
+                self._rel.motion((x - self._last_motion[0]) * f, (y - self._last_motion[1]) * f)
+            if lay:
+                self._rel.edge(x, y, lay, (self.client.width, self.client.height))
             self._last_motion = (x, y)
+            self._send_rel()
+
+    def _leave(self, *_):
+        lay = self._layout()
+        if self.grabbed and not self.client.absolute and self._last_motion and lay:
+            # The hidden host pointer left the view (GTK 4 cannot hold it in): the guest
+            # cursor goes to the edge it left by, where the two meet again.
+            self._rel.left(*self._last_motion, lay, (self.client.width, self.client.height))
+            self._send_rel()
+        self._last_motion = None
+
+    def _send_rel(self) -> None:
+        """Start sending the queued relative-mouse events: a burst now, then one every
+        TICK_MS while any are left (see relmouse.py)."""
+        if self._rel_timer or not self._rel.pending():
+            return
+        self._send_burst()
+        self._rel_timer = GLib.timeout_add(relmouse.TICK_MS, self._rel_tick)
+
+    def _rel_tick(self) -> bool:
+        if self._rel.pending():
+            self._send_burst()
+            return True
+        # Makes QEMU send whatever did not fit its PS/2 queue yet.
+        self.client.mouse_rel(0, 0)
+        self._rel_timer = 0
+        return False
+
+    def _send_burst(self) -> None:
+        for item in self._rel.take():
+            if item[0] == "btn":
+                self.client.mouse_button(item[1], item[2])
+            else:
+                self.client.mouse_rel(item[1], item[2])
+
+    def _on_mouse_mode(self, _c, absolute: bool) -> None:
+        if absolute and self.grabbed:      # e.g. a USB tablet became active: no capture needed
+            self.set_grab(False)
 
     def _button(self, gesture, n_press, x, y, pressed):
         self.grab_focus()
         if not self.client.absolute and not self.grabbed:
             if pressed:
                 self.set_grab(True)
+                pos = self._to_guest(x, y)
+                if pos:     # the guest cursor jumps to where the host pointer is
+                    self._rel.align(*pos, (self.client.width, self.client.height))
+                    self._last_motion = (x, y)
+                    self._send_rel()
             return
         btn = BUTTONS.get(gesture.get_current_button())
         if btn is not None:
+            self._mouse_button(btn, pressed)
+
+    def _mouse_button(self, btn: int, pressed: bool) -> None:
+        if self.client.absolute:
             self.client.mouse_button(btn, pressed)
+        else:       # after the moves still queued, so the click lands where the cursor goes
+            self._rel.button(btn, pressed)
+            self._send_rel()
 
     def _scroll(self, ctl, dx, dy):
         if dy == 0:
             return False
         b = 3 if dy < 0 else 4
-        self.client.mouse_button(b, True)
-        self.client.mouse_button(b, False)
+        self._mouse_button(b, True)
+        self._mouse_button(b, False)
         return True
 
     def set_grab(self, grab: bool) -> None:
@@ -289,6 +344,7 @@ class DisplayView(Gtk.Widget):
             return
         self.grabbed = grab
         self._last_motion = None
+        self._rel.reset()
         if grab and not self.client.absolute:
             self.set_cursor(Gdk.Cursor.new_from_name("none", None))
         else:

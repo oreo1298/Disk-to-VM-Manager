@@ -927,3 +927,44 @@ installed and "Switch to faster devices" was applied.
   Windows 7 to test with, so the boot itself is unverified. The QXL display
   driver is not checked; without it, Windows uses its standard VGA driver
   on QXL.
+
+## D39. Relative (PS/2) mouse in the console
+
+Reported: on Windows 98, the mouse did not move across the screen.
+
+- The bug: the console read QEMU's `IsAbsolute` property with
+  `bool(v.unpack()) if v else True`. A GLib.Variant holding `false` is
+  itself falsy, so every PS/2-only guest (DOS, Windows 9x) counted as
+  absolute. The console sent `SetAbsPosition`, which QEMU refuses for a
+  relative mouse. Clicks worked, but the cursor never moved. Fixed
+  (`is not None`); the test VM is now seen as relative.
+- Capturing the pointer had two more problems:
+  - Windows 3.x/9x accelerate any move of more than 6 counts per packet,
+    so the guest cursor ran ahead of the host pointer.
+  - GTK 4 can neither lock nor warp the host pointer, so movement stopped
+    at the window edge with the guest cursor short of its own edge.
+- `rehome/ui/console/relmouse.py`:
+  - Moves are sent in steps of at most 6 counts.
+  - On capture, the guest cursor goes to the corner and then to where you
+    clicked.
+  - Reaching an edge of the guest image, or leaving the view, pushes the
+    guest cursor to that edge, which lines the two up again.
+  - QEMU's PS/2 queue holds 16 bytes (5 packets). What doesn't fit is added
+    to the next packet, which then gets accelerated. A push that doesn't fit
+    cancels the moves after it. So everything is queued, buttons included,
+    and sent 3 packets every 3 ms, with an empty move at the end to flush
+    QEMU. 4 per 2 ms arrived 1:1 from a plain test, but merged now and then
+    with the GTK window and the emulated guest competing for the CPU.
+  - A backlog above 64 packets (a fast flick) is merged into bigger packets
+    rather than lagging. Merging never crosses a push or a button.
+- Tested against a real QEMU (TCG) with a boot-sector guest
+  (`tests/fixtures/ps2mouse.asm`). It reads the mouse through the BIOS,
+  applies Windows' acceleration rule, and prints its cursor position.
+  - The old way moved 100 host pixels as 200.
+  - The new way moves them 1:1, aligns on capture, and lines up at every
+    edge.
+  - The console widget itself was driven under Xvfb.
+- Not used: VBADOS (GPL, VMware "vmmouse" absolute mouse) and vmwmouse are
+  Windows 3.x drivers, and neither is confirmed for Windows 9x. The USB
+  tablet confines Windows 98's pointer to the upper-left quarter, as
+  VirtualBox documents.

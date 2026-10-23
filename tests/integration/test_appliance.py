@@ -37,6 +37,9 @@ PASSWORD = "rehome-test"
 # A DOS program switching to VESA mode 117h (1024x768, 16-bit colour), like a Windows desktop:
 # mov ax,4F02h / mov bx,0117h / int 10h / ret
 VBE_COM = bytes([0xB8, 0x02, 0x4F, 0xBB, 0x17, 0x01, 0xCD, 0x10, 0xC3])
+# A DOS program turning the computer off through ACPI, as Windows does when it shuts down:
+# mov dx,604h / mov ax,2000h / out dx,ax / ret (SLP_EN in the PM1a control register)
+POWEROFF_COM = bytes([0xBA, 0x04, 0x06, 0xB8, 0x00, 0x20, 0xEF, 0xC3])
 # Terminal escapes: OSC (systemd's shell context markers, titles) and CSI sequences.
 ESCAPES = re.compile(r"\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b\[[0-9;?]*[A-Za-z]")
 KVM = os.access("/dev/kvm", os.R_OK | os.W_OK)
@@ -225,6 +228,7 @@ def appliance(tmp_path_factory):
         with gfs.session([gfs.Drive(str(img), "raw", False)]) as g:
             g.mount("/dev/sda1", "/")
             g.write("/VBE.COM", VBE_COM)
+            g.write("/POWEROFF.COM", POWEROFF_COM)
         disk = work / "disk.qcow2"
         disks.convert(str(img), str(disk), src_fmt="raw")
         cfg = create.create(create.NewVMSpec(name="FreeDOS Appliance", os="freedos1.3",
@@ -462,5 +466,13 @@ def test_boots_on_uefi(appliance, tmp_path):
             (left, right)
         _, alive = sh.run("pgrep -f '^/usr/bin/qemu-system' >/dev/null && echo alive")
         assert "alive" in alive
+        # The guest shuts down (ACPI, like Windows): the computer turns off, instead of
+        # the maintenance console reporting a crash (QEMU closes its socket right after
+        # its SHUTDOWN event).
+        sh.run(f"rehome type {cfg.id} poweroff && rehome send-keys {cfg.id} ret")
+        deadline = time.monotonic() + 300 * SLOW
+        while pc.proc.poll() is None:
+            assert time.monotonic() < deadline, open(tmp_path / "serial.log", errors="replace").read()[-3000:]
+            time.sleep(3)
     finally:
         pc.stop()

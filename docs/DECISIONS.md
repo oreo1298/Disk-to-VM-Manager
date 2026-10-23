@@ -792,3 +792,8 @@ reason the kiosk assumed a crash. Reproduced with a stand-in socket
   after QEMU has gone.
 - The session logs why the VM stopped, and "Save diagnostics" now includes
   the console's message and the session's result.
+- Confirmed with a real QEMU: FreeDOS powering itself off through ACPI
+  (the PM1a control register, as Windows does) left the old client with
+  no reason and the new one with `guest-shutdown`. The appliance test now
+  ends with the VM powering itself off, and the test computer must turn
+  off.

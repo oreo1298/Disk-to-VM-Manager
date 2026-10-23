@@ -387,23 +387,30 @@ def session() -> int:
     except RehomeError:
         q = None
     STARTED.touch()
+    def read_events(timeout: float) -> None:
+        nonlocal q, reason
+        try:
+            for ev in q.poll_events(timeout=timeout):
+                if ev.get("event") == "SHUTDOWN":
+                    reason = ev.get("data", {}).get("reason", "") or reason
+        except RehomeError:
+            q = None
+
     try:
         while runner.is_running(cfg):
             if q is not None:
-                try:
-                    for ev in q.poll_events(timeout=1.0):
-                        if ev.get("event") == "SHUTDOWN":
-                            reason = ev.get("data", {}).get("reason", "") or reason
-                except RehomeError:
-                    q = None
+                read_events(1.0)
             else:
                 time.sleep(1)
+        if q is not None and not reason:
+            read_events(0.5)            # QEMU may have exited right after its last event
     finally:
         stop.set()
         if q is not None:
             q.close()
     runner.reap()
     runner.after_stop(cfg)
+    log.info("the VM stopped: %s", reason or "QEMU quit without saying why")
     result = outcome_for(reason)
     if result["outcome"] == "error" and not result.get("message"):
         log_tail = runner._tail(cfg.dir / "logs" / "qemu.log")

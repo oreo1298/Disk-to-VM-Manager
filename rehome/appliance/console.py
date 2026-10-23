@@ -336,9 +336,10 @@ def collect_diagnostics(vm_id: str, dest_dir: Path) -> Path:
         (t / "lspci.txt").write_text(_out(["lspci", "-nnk"]))
         (t / "lsusb.txt").write_text(_out(["lsusb"]))
         (t / "vm-diagnostics.txt").write_text(_out([REHOME, "diagnostics", vm_id]))
-        for f in (Path("/etc/rehome/appliance.toml"), runtime.SETTINGS):
+        for f in (Path("/etc/rehome/appliance.toml"), runtime.SETTINGS, runtime.MESSAGE,
+                  runtime.RESULT, runtime.INTENT):
             if f.exists():
-                shutil.copy(f, t / f.name)
+                shutil.copy(f, t / f.name)     # what the console said, how the VM ended
         logs = Path("/var/lib/rehome/data/vms")
         with tarfile.open(path, "w:gz") as tar:
             for f in sorted(t.iterdir()):

@@ -775,3 +775,20 @@ chosen by hand in the New VM wizard (a profile such as "Windows XP / Server
   (XP: 5.1, Windows 11: build 22000), like a detected system would.
 - Not verified against real Windows 7 or Vista; Vista is not in
   libosinfo's list (the 0.141 tools are offered as for 7).
+
+## D35. A normal shutdown reported as a crash
+
+Diagnostics from an ASUS desktop (Windows XP on QXL): the maintenance
+console reported a crash, but QEMU had printed no error, the kernel no
+segfault, and the session ended cleanly. QEMU sends its SHUTDOWN event
+(with the reason: guest shut down, restarted...) and closes its control
+socket immediately. The QMP client read the event and then hit the closed
+socket in the same call; the error discarded the event, and without a
+reason the kiosk assumed a crash. Reproduced with a stand-in socket
+(`tests/unit/test_qmp.py`).
+
+- `poll_events` returns the events it read before the socket closed (the
+  next call reports the closed connection); the kiosk also reads once more
+  after QEMU has gone.
+- The session logs why the VM stopped, and "Save diagnostics" now includes
+  the console's message and the session's result.

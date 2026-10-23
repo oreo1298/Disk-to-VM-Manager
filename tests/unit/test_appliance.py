@@ -428,3 +428,49 @@ def test_kiosk_says_what_happens_next(monkeypatch):
                         lambda argv, env=None, check=False: types.SimpleNamespace(returncode=0))
     assert runtime.kiosk() == 0
     assert said[-2:] == ["Restarting Old PC...", "Turning off..."]
+
+
+@pytest.mark.parametrize("polls_while_running", [2, 1])
+def test_session_reads_the_shutdown_reason_when_qemu_exits_at_once(monkeypatch, polls_while_running):
+    """A normal shutdown was reported as a crash when QEMU closed its socket with the event.
+
+    With one poll while running, QEMU is gone before its event was read: a last read gets it.
+    """
+    import types
+    from rehome.vm import qmp, runner
+    cfg = types.SimpleNamespace(name="WinXP", machine=types.SimpleNamespace(memory_mib=512, cpus=1),
+                                dir=Path("/nonexistent"))
+    written = {}
+
+    class FakeQMP:
+        def __init__(self, path):
+            self.calls = 0
+
+        def connect(self, retries=0):
+            return self
+
+        def poll_events(self, timeout=0.0):
+            self.calls += 1
+            if self.calls == 1:
+                return []
+            if self.calls == 2:                   # the event, with the hang-up behind it
+                return [{"event": "SHUTDOWN", "data": {"reason": "guest-shutdown"}}]
+            raise qmp.QmpClosed()
+
+        def close(self):
+            pass
+    running = iter([True] * polls_while_running + [False])
+    monkeypatch.setattr(runtime, "the_vm", lambda: cfg)
+    monkeypatch.setattr(runtime, "load_config", lambda: {"kiosk": {"usb_auto": False}})
+    monkeypatch.setattr(runtime, "_read_json", lambda path: {})
+    monkeypatch.setattr(runtime, "_write_json", lambda path, data: written.setdefault(path.name, data))
+    monkeypatch.setattr(runtime, "power_button_agent", lambda cfg, stop: None)
+    monkeypatch.setattr(runtime, "STARTED", Path(os.devnull))
+    monkeypatch.setattr(runner, "start", lambda *a, **k: None)
+    monkeypatch.setattr(runner, "runtime", lambda c: types.SimpleNamespace(qmp_ui="x"))
+    monkeypatch.setattr(runner, "is_running", lambda c: next(running, False))
+    monkeypatch.setattr(runner, "reap", lambda: None)
+    monkeypatch.setattr(runner, "after_stop", lambda c: None)
+    monkeypatch.setattr(qmp, "QMP", FakeQMP)
+    assert runtime.session() == 0
+    assert written["session.json"]["outcome"] == "poweroff"

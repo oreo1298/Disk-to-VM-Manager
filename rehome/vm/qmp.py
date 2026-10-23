@@ -163,6 +163,12 @@ class QMP:
                     timeout = 0.001
             except socket.timeout:
                 pass
+            except QmpClosed:
+                # QEMU sends SHUTDOWN and then closes the socket at once: return what was
+                # read; the next call reports the closed connection.
+                self.close()
+                if not self._events:
+                    raise
         out = list(self._events)
         self._events.clear()
         return out

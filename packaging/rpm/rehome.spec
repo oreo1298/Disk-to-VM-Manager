@@ -11,7 +11,7 @@
 %global __brp_python_bytecompile %{nil}
 
 Name:           rehome
-Version:        0.3.3
+Version:        0.3.4
 Release:        1%{?dist}
 Summary:        Turn installed operating systems into QEMU/KVM virtual machines
 License:        GPL-3.0-or-later
@@ -139,6 +139,9 @@ python3 packaging/layout.py install \
 %{_datadir}/icons/hicolor/symbolic/apps/io.github.oreo1298.Rehome-symbolic.svg
 
 %changelog
+* Fri Oct 23 2026 Rehome contributors - 0.3.4-1
+- Appliances: a normal shutdown or restart of the VM is no longer reported as a crash.
+
 * Fri Oct 23 2026 Rehome contributors - 0.3.3-1
 - Guest tools by Windows era, also when the system was chosen by hand: XP gets the
   SPICE tools 0.65, Windows 7 the SPICE tools 0.141, Windows 8+ virtio-win.

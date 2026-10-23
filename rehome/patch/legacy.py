@@ -92,6 +92,38 @@ def win9x_report(ctx) -> PatchResult:
     return PatchResult("", "", "info", msg)
 
 
+@patch("win9x.cpu_speed", "Fix the crash on fast computers (NDIS)", families=("win9x",))
+def cpu_speed(ctx) -> PatchResult:
+    """"While initializing device NDIS: Windows protection error" on fast computers, also
+    under emulation: patcher9x's fix for the delay-loop calibration (see win9x_speed.py)."""
+    from rehome.patch import win9x_speed
+    g = ctx.g
+    windir = ctx.os.details.get("windir", "/WINDOWS")
+    changes, already = [], []
+    with mounted(g, ctx.root, readonly=False):
+        for rel, patches in win9x_speed.TARGETS:
+            path = ci_path(g, f"{windir}/{rel}")
+            if not path:
+                continue
+            data = bytearray(g.read_file(path))
+            applied, done = win9x_speed.patch(data, patches)
+            if applied:
+                g.write(path, bytes(data))
+                changes.append(f"{path}: {'; '.join(applied)}")
+            elif done:
+                already.append(path)
+    if changes:
+        return PatchResult("", "", "applied",
+                           "Windows 95 and 98 divide by zero while timing a delay loop on fast "
+                           "computers, emulated ones included (\"While initializing device NDIS: "
+                           "Windows protection error\"). Patched as patcher9x does: a longer loop "
+                           "and no division by zero.", changes)
+    if already:
+        return PatchResult("", "", "not-needed", "Already patched: " + ", ".join(already) + ".")
+    return PatchResult("", "", "not-needed", "No driver with the fast-computer bug was found "
+                       "(Windows 98 SE and Me guard against it).")
+
+
 LBA28_LIMIT = 2**28                     # sectors Windows 9x's IDE driver can address (128 GiB)
 
 

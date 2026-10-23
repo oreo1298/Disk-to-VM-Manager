@@ -26,14 +26,14 @@ hpet = false
 agent = false
 vdagent = false
 accel = "tcg"
-accel_reason = "Windows 98/Me can fail with \"Windows protection error\" (NDIS.VXD) on fast CPUs; emulation avoids it. You can switch to KVM in the settings if your install is patched."
+accel_reason = "Windows 98/Me crash on modern CPUs under KVM (the TLB invalidation bug, and timing loops that divide by zero, e.g. \"Windows protection error\" in NDIS.VXD); emulation avoids most of this, and Rehome patches NDIS.VXD's loop, which can still fail under emulation on fast computers."
 cpu_quota_pct = 100
 
 [create]
 disk_size = "8G"
 
 [patches]
-list = ["dos.boot_record", "win9x.big_disk", "win9x.report", "win9x.ram_limit", "win9x.vcache_limit"]
+list = ["dos.boot_record", "win9x.cpu_speed", "win9x.big_disk", "win9x.report", "win9x.ram_limit", "win9x.vcache_limit"]
 
 [notes]
 list = [

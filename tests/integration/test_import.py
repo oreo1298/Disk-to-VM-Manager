@@ -7,6 +7,7 @@ and (where the image is bootable) that the VM boots.
 """
 
 import hashlib
+import json
 import time
 
 import pytest
@@ -202,6 +203,36 @@ def test_windows7_without_virtio_drivers_keeps_its_disk_and_network(images, monk
     assert any("network stays e1000" in line and "netkvm" in line for line in log), log
     cfg = library.reload(cfg)
     assert (cfg.disks[0].bus, cfg.nics[0].model, cfg.display.device) == ("sata", "e1000", "qxl-vga")
+
+
+def test_windows98_fast_cpu_fix(images):
+    """Regression: a Windows 98 appliance stopped with "While initializing device NDIS:
+    Windows protection error" on a fast computer (QEMU 7.2+ emulates LOOP fast enough
+    for the delay-loop calibration to divide by zero). NDIS.VXD and the disk drivers
+    are patched in the VM's disk as patcher9x does."""
+    from rehome import importer
+    from rehome.inspect.gfs import Drive, session
+    from rehome.patch.win9x_speed_data import DRIVERS, NDIS
+    from tests.unit.test_win9x_speed import embed
+    ndis, _ = embed(NDIS[0])
+    esdi, _ = embed(DRIVERS[0], seed=5)
+    src = W.build_win9x(str(images / "win98fe-ndis.img"), kernel32=(4, 10, 1998, 0), extra={
+        "/WINDOWS/SYSTEM/NDIS.VXD": bytes(ndis),
+        "/WINDOWS/SYSTEM/IOSUBSYS/ESDI_506.PDR": bytes(esdi)})
+    before = sha256(src)
+    a = importer.analyze([src])
+    assert a.os.distro == "win98"
+    cfg = importer.run(a, importer.ImportOptions())
+    entry = next(json.loads(line) for line in (cfg.dir / "logs" / "patch.log").read_text()
+                 .splitlines() if '"win9x.cpu_speed"' in line)
+    assert entry["status"] == "applied", entry
+    assert any("NDIS.VXD" in c for c in entry["changes"])
+    assert any("ESDI_506.PDR" in c for c in entry["changes"])
+    with session([Drive(str(cfg.resolve(cfg.disks[0].file)), "qcow2")]) as g:
+        g.mount_ro("/dev/sda1", "/")
+        patched = g.read_file("/WINDOWS/SYSTEM/NDIS.VXD")
+    assert bytes.fromhex("b900004006") in patched and bytes(ndis) != patched
+    assert sha256(src) == before
 
 
 def test_windows98_and_msdos(images):

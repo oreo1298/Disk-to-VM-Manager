@@ -26,14 +26,14 @@ hpet = false
 agent = false
 vdagent = false
 accel = "tcg"
-accel_reason = "Windows 95 crashes with \"Windows protection error\" on CPUs faster than about 2 GHz; emulation keeps it within the speed it can handle."
+accel_reason = "Windows 95 crashes with \"Windows protection error\" on CPUs faster than about 2 GHz (timing loops that divide by zero); emulation keeps it slower, and Rehome patches the loops in NDIS.VXD and the disk drivers."
 cpu_quota_pct = 100           # never idles: cap it at one host core
 
 [create]
 disk_size = "2G"
 
 [patches]
-list = ["dos.boot_record", "win9x.big_disk", "win9x.report", "win9x.ram_limit"]
+list = ["dos.boot_record", "win9x.cpu_speed", "win9x.big_disk", "win9x.report", "win9x.ram_limit"]
 
 [notes]
 list = [

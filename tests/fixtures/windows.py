@@ -187,8 +187,10 @@ def build(out: str, spec: WinSpec, fmt: str = "raw") -> str:
     return out
 
 
-def build_win9x(out: str, kernel32=(4, 10, 2222, 0), windir: str = "WINDOWS") -> str:
-    """FAT32 disk with Windows 98 SE (or 95/Me, per kernel32 version)."""
+def build_win9x(out: str, kernel32=(4, 10, 2222, 0), windir: str = "WINDOWS",
+                extra: dict[str, bytes] | None = None) -> str:
+    """FAT32 disk with Windows 98 SE (or 95/Me, per kernel32 version); ``extra`` adds
+    files (path: content)."""
     from rehome.inspect.gfs import new_handle
     os.environ.setdefault("LIBGUESTFS_BACKEND", "direct")
     g = new_handle()
@@ -214,6 +216,9 @@ def build_win9x(out: str, kernel32=(4, 10, 2222, 0), windir: str = "WINDOWS") ->
         g.write(f"/{windir}/SYSTEM/IOSUBSYS/ESDI_506.PDR", b"LE")
         g.write(f"/{windir}/SYSTEM/KERNEL32.DLL", regf.minimal_pe("i386") +
                 regf.version_resource(*kernel32, original_filename="KERNEL32.DLL"))
+        for path, content in (extra or {}).items():
+            g.mkdir_p(os.path.dirname(path))
+            g.write(path, content)
         g.umount_all()
     finally:
         g.shutdown()

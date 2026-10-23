@@ -968,3 +968,45 @@ Reported: on Windows 98, the mouse did not move across the screen.
   Windows 3.x drivers, and neither is confirmed for Windows 9x. The USB
   tablet confines Windows 98's pointer to the upper-left quarter, as
   VirtualBox documents.
+
+## D40. Windows 95/98 on fast computers: patcher9x's CPU speed fix
+
+Reported: a Windows 98 VM worked in the desktop app. Built into an appliance
+and started on another computer, it stopped with "While initializing device
+NDIS: Windows protection error".
+
+- Cause: NDIS.VXD calibrates a delay loop. It runs 1,048,576 LOOP
+  instructions, reads the time with Get_System_Time (1 ms resolution) and
+  divides by the elapsed milliseconds. A CPU that finishes within one
+  millisecond makes that a division by zero (Microsoft KB 312108; OS/2
+  Museum).
+  - QEMU 7.2 and later emulate LOOP fast enough for this on a fast computer
+    (noted by patcher9x). So emulation, which Rehome uses for Windows 9x,
+    avoids the bug only on slower computers. Which computer runs the VM
+    decides.
+  - Windows 98 SE guards the division; 95 and 98 first edition do not. The
+    reported system is 98 first edition (kernel32 4.10.1998).
+- New patch `win9x.cpu_speed` (95/98 profiles), a port of
+  [patcher9x](https://github.com/JHRobotics/patcher9x) (MIT; its notice is in
+  `win9x_speed_data.py`):
+  - The loop runs 100 times longer (drivers: 8 times), the result is scaled
+    to match, and a zero time counts as 1 ms.
+  - Patterns: NDIS v1–v4 and driver v1–v8.
+  - Files: `SYSTEM\NDIS.VXD`, `SYSTEM\VMM32\NDIS.VXD`,
+    `SYSTEM\IOSUBSYS\ESDI_506.PDR` and `SCSIPORT.PDR`, plus `IOS.VXD` and
+    `NTKERN.VXD` when they exist as separate files in `SYSTEM\VMM32`.
+  - The code is found by its bytes, skipping those patcher9x skips:
+    encoding variants such as `29 D0`/`2B C2`, and relocated addresses,
+    which stay untouched.
+- Not done: IOS and NTKERN inside `VMM32.VXD`. They are compressed (W3/W4),
+  and patcher9x unpacks them; they passed on the reported computer. The
+  TLB invalidation bug fix (also in patcher9x) is not ported either; it
+  concerns KVM on new CPUs, while Rehome emulates Windows 9x.
+- Alternative considered: `-icount shift=N` makes the emulated CPU's speed
+  fixed. Windows 9x never idles the CPU, so on a computer slower than the
+  fixed speed the guest's clock and sound would run slow. Also, `-icount`
+  is now added only under emulation, since QEMU refuses it with KVM.
+- Tested: unit tests for the search and replace, on every pattern with
+  random relocated bytes. An import of a Windows 98 FE disk carrying such
+  an NDIS.VXD and ESDI_506.PDR patches both in the overlay; the source is
+  unchanged. Not run with Microsoft's real NDIS.VXD (none here).

@@ -242,7 +242,7 @@ class Builder:
         else:
             tcg = ["tcg", "thread=multi"] if m.cpus > 1 else ["tcg"]
             self.a("-accel", ",".join(tcg))
-        if m.icount:
+        if m.icount and o.accel != "kvm":       # QEMU refuses -icount with KVM
             self.a("-icount", m.icount)
 
     def _cpu(self) -> None:

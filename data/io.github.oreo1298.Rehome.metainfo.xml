@@ -34,6 +34,11 @@
     <control>pointing</control>
   </supports>
   <releases>
+    <release version="0.3.10" date="2026-10-23">
+      <description>
+        <p>Windows 95 and 98 no longer stop with "While initializing device NDIS: Windows protection error" on fast computers: Rehome applies patcher9x's fix to NDIS.VXD and the disk drivers in the VM's disk.</p>
+      </description>
+    </release>
     <release version="0.3.9" date="2026-10-23">
       <description>
         <p>The mouse moves again in DOS and Windows 9x VMs: the console took their PS/2 mouse for an absolute one. Once captured, the guest cursor jumps to where you clicked, follows the pointer without Windows' acceleration getting in the way, and lines up again at every screen edge.</p>

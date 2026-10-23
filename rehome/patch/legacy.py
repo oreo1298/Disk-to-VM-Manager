@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
 
 from rehome.errors import RehomeError
 from rehome.inspect import bootchain
@@ -129,7 +130,7 @@ def boot_record(ctx) -> PatchResult:
                    f"LABEL system\r\n  COM32 chain.c32\r\n  APPEND fs {loader}\r\n").encode()
             for name in ("syslinux.cfg", "extlinux.conf"):      # whichever installer runs
                 g.write(f"/syslinux/{name}", cfg)
-        tool = _install_boot_sector(g, ctx.root)
+        tool = _install_boot_sector(g, ctx.root, ctx.cfg.dir)
         changes.append(f"{ctx.root}: boot sector replaced by SYSLINUX ({tool}), which starts the "
                        f"system with chain.c32 {loader} (/syslinux/syslinux.cfg)")
     if bc.partition:
@@ -152,27 +153,69 @@ def boot_record(ctx) -> PatchResult:
                        changes)
 
 
-def _install_boot_sector(g, device: str) -> str:
+def _install_boot_sector(g, device: str, workdir) -> str:
     """SYSLINUX's boot sector and ldlinux.sys in /syslinux of a FAT partition; the tool used.
 
-    libguestfs's ``syslinux`` needs mtools inside its helper VM, which it only has when
-    mtools is installed on this computer (Arch's syslinux package does not pull it in).
-    ``extlinux`` does the same job through the Linux FAT driver of the mounted partition.
+    1. libguestfs's ``syslinux``, inside its helper VM. It copies files with mtools,
+       which the helper VM only has when this computer has it.
+    2. ``extlinux`` on the mounted partition (the Linux FAT driver, no mtools).
+    3. This computer's own ``syslinux`` on a copy of the partition, writing back only
+       the blocks it changed: for helper VMs built without SYSLINUX at all.
     """
+    errors = []
     try:
         g.syslinux(device, directory="/syslinux")
         return "syslinux"
-    except RuntimeError as first:
-        try:
-            with mounted(g, device, readonly=False):
-                g.extlinux("/syslinux")
-            return "extlinux"
-        except RuntimeError as second:
-            raise RehomeError(
-                "SYSLINUX could not be installed on the system's partition.",
-                fix="Install the syslinux and mtools packages, then run the fixes again: "
-                    "`rehome patch run VM --only dos.boot_record`.",
-                details=f"syslinux: {first}\nextlinux: {second}") from second
+    except RuntimeError as e:
+        errors.append(f"syslinux (libguestfs): {e}")
+    try:
+        with mounted(g, device, readonly=False):
+            g.extlinux("/syslinux")
+        return "extlinux"
+    except RuntimeError as e:
+        errors.append(f"extlinux (libguestfs): {e}")
+    try:
+        _install_on_host(g, device, workdir)
+        return "syslinux on this computer"
+    except (OSError, RuntimeError, RehomeError) as e:
+        errors.append(f"syslinux (this computer): {getattr(e, 'message', None) or e}"
+                      + (f" {e.details}" if getattr(e, "details", "") else ""))
+    raise RehomeError("SYSLINUX could not be installed on the system's partition.",
+                      fix="Install the syslinux and mtools packages, then run the fixes again: "
+                          "`rehome patch run VM --only dos.boot_record`. `rehome patch log VM` "
+                          "shows the details.",
+                      details="\n".join(errors))
+
+
+BLOCK = 64 * 1024
+
+
+def _install_on_host(g, device: str, workdir) -> None:
+    """Run this computer's syslinux on a copy of the partition; write back what changed."""
+    import hashlib
+    import tempfile
+    from rehome.util.proc import run, which
+    tool = which("syslinux")
+    if not tool:
+        raise RuntimeError("syslinux is not installed on this computer")
+    size = g.blockdev_getsize64(device)
+    if shutil.disk_usage(workdir).free < size + 256 * 2**20:
+        raise RuntimeError(f"not enough free space in {workdir} for a copy of the partition")
+    with tempfile.TemporaryDirectory(prefix="syslinux-", dir=workdir) as tmp:
+        part = os.path.join(tmp, "partition.img")
+        g.download(device, part)
+        with open(part, "rb") as f:
+            before = [hashlib.blake2b(b, digest_size=16).digest() for b in iter(lambda: f.read(BLOCK), b"")]
+        # The mtools-based installer works on an image file, without root.
+        run([tool, "--install", "--directory", "/syslinux", part], what="Installing SYSLINUX",
+            timeout=300)
+        with open(part, "rb") as f:
+            for i, block in enumerate(iter(lambda: f.read(BLOCK), b"")):
+                if i < len(before) and hashlib.blake2b(block, digest_size=16).digest() == before[i]:
+                    continue
+                done = 0
+                while done < len(block):
+                    done += g.pwrite_device(device, block[done:], i * BLOCK + done)
 
 
 @patch("bsd.report", "BSD disk controller", kind=CONFIG, families=("bsd",))

@@ -34,6 +34,11 @@
     <control>pointing</control>
   </supports>
   <releases>
+    <release version="0.3.6" date="2026-10-23">
+      <description>
+        <p>DOS and Windows 9x boot repair also works when libguestfs's helper has no SYSLINUX: Rehome then uses this computer's own syslinux.</p>
+      </description>
+    </release>
     <release version="0.3.5" date="2026-10-23">
       <description>
         <p>DOS and Windows 9x disks whose boot sector was written on Linux are made bootable even when libguestfs lacks mtools; failed automatic fixes show their technical details.</p>

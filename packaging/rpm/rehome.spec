@@ -11,7 +11,7 @@
 %global __brp_python_bytecompile %{nil}
 
 Name:           rehome
-Version:        0.3.5
+Version:        0.3.6
 Release:        1%{?dist}
 Summary:        Turn installed operating systems into QEMU/KVM virtual machines
 License:        GPL-3.0-or-later
@@ -142,6 +142,10 @@ python3 packaging/layout.py install \
 %{_datadir}/icons/hicolor/symbolic/apps/io.github.oreo1298.Rehome-symbolic.svg
 
 %changelog
+* Fri Oct 23 2026 Rehome contributors - 0.3.6-1
+- DOS/Windows 9x boot repair falls back to this computer's own syslinux when
+  libguestfs's helper has none.
+
 * Fri Oct 23 2026 Rehome contributors - 0.3.5-1
 - DOS/Windows 9x boot repair falls back to extlinux when libguestfs lacks mtools;
   failed automatic fixes keep their details.

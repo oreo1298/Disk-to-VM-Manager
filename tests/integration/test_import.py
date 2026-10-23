@@ -273,29 +273,43 @@ def test_dos_disk_prepared_on_linux_is_made_bootable(images, broken):
 
 
 @pytest.mark.skipif(bool(freedos.available()), reason="cannot build FreeDOS image")
-def test_boot_repair_without_mtools_in_libguestfs(images, monkeypatch):
-    """libguestfs's syslinux needs mtools in its helper VM (not pulled in on Arch): it then
-    fails with "mcopy: not found", and Rehome installs SYSLINUX with extlinux instead."""
+@pytest.mark.parametrize("broken, expect", [
+    (("syslinux",), "extlinux"),                          # no mtools in libguestfs's helper VM
+    (("syslinux", "extlinux"), "syslinux on this computer"),   # no SYSLINUX in it at all
+])
+def test_boot_repair_when_libguestfs_cannot_install_syslinux(images, monkeypatch, broken, expect):
+    """libguestfs's syslinux needs mtools in its helper VM, and both it and extlinux need the
+    SYSLINUX package there (built from this computer's packages, e.g. on Arch). Rehome falls
+    back to extlinux, then to this computer's own syslinux on a copy of the partition."""
     from rehome import importer
     from rehome.patch import legacy
     from rehome.vm import runner
     real = legacy._install_boot_sector
     used = []
 
-    def without_mtools(g, device):
+    def failing(g, device, workdir):
         def syslinux(*a, **k):
             raise RuntimeError("syslinux: sh: 1: mcopy: not found\nsyslinux: failed to create "
                                "ldlinux.sys")
-        g.syslinux = syslinux
-        used.append(real(g, device))
+
+        def extlinux(*a, **k):
+            raise RuntimeError("extlinux: feature 'extlinux' is not available in this build of "
+                               "libguestfs")
+        if "syslinux" in broken:
+            g.syslinux = syslinux
+        if "extlinux" in broken:
+            g.extlinux = extlinux
+        used.append(real(g, device, workdir))
         return used[-1]
-    monkeypatch.setattr(legacy, "_install_boot_sector", without_mtools)
-    src = images / "freedos-fat32-no-mtools.img"
+    monkeypatch.setattr(legacy, "_install_boot_sector", failing)
+    src = images / f"freedos-fat32-repair-{len(broken)}.img"
     if not src.exists():
         freedos.build(src, fat=32, boot_code=False, active=False, mbr_code=False)
+    before = sha256(src)
     a = importer.analyze([str(src)], smart_check=False)
     cfg = importer.run(a, importer.ImportOptions(mode="copy"))
-    assert used == ["extlinux"]
+    assert used == [expect]
+    assert not list(cfg.dir.glob("syslinux-*"))        # the partition copy was removed
     try:
         runner.start(cfg, headless=True)
         deadline = time.monotonic() + 90
@@ -304,3 +318,4 @@ def test_boot_repair_without_mtools_in_libguestfs(images, monkeypatch):
         assert freedos.MARKER in runner.screen_text(cfg), runner.screen_text(cfg)
     finally:
         runner.force_off(cfg)
+    assert sha256(src) == before

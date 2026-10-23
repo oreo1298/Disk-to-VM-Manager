@@ -822,3 +822,10 @@ sentence: the engine dropped the error's fix and libguestfs' message.
   checks for it and for mtools.
 - Windows 98's own IO.SYS through chain.c32 `msdos7=` has not been tested
   here (no Windows 98 image); FreeDOS is.
+- Follow-up (0.3.6): on the same Arch computer, with syslinux and mtools
+  installed, both libguestfs methods still failed, which fits a helper VM
+  built without the SYSLINUX package at all. Third method: this computer's
+  own `syslinux` (the mtools-based installer, no root) on a downloaded copy
+  of the partition in the VM's folder, writing back only the 64 KiB blocks
+  it changed. Tested end to end with both libguestfs methods failing (both
+  backends): the VM boots, the source is unchanged, the copy is removed.

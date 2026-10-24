@@ -1039,7 +1039,6 @@ has to be moved around a lot to get past them.
   machine's PS/2 mouse ("ImExPS/2 Generic Explorer Mouse") to a FreeDOS VM
   switched to a PS/2-only mouse, and moving that mouse through QMP moved
   the cursor of a DOS program (`tests/fixtures/mousecom.asm`, Windows'
-  acceleration rule) from 320 to 345. The full appliance test
-  (`test_a_vm_with_only_a_ps2_mouse_gets_the_computers_mouse`, which also
-  drives the cursor to every edge) is still to pass at the time of this
-  commit.
+  acceleration rule) from the middle of the screen to its right, bottom,
+  left and top edges with no walls on the way
+  (`test_a_vm_with_only_a_ps2_mouse_gets_the_computers_mouse`, passed).

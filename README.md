@@ -456,7 +456,8 @@ Tested so far (details and how to re-run: [docs/TESTING.md](docs/TESTING.md)):
   grows the data partition, a USB stick is handed to the VM, the power
   button reaches the appliance, and the maintenance console works (password
   login on the screen, starting the VM from it, powering off when the VM
-  stops).
+  stops; M on the start screen, a backup restored over the VM, a CD image
+  from a USB stick, settings kept across a restart).
 
 **Not tested yet:**
 

@@ -218,7 +218,9 @@ compositor) showing QEMU's own window. It is a normal Rehome VM: the same
   0.3.1 ([DECISIONS.md](DECISIONS.md) D32) but not yet re-checked on that
   laptop. A VM with only a PS/2 mouse (DOS, Windows 9x) gets the
   computer's mice directly (D41), tested with the appliance's own PS/2
-  mouse moving a cursor in FreeDOS. The maintenance console (D42) has a
-  test in the same emulated computer (M on the start screen, a backup
-  restored over the VM, a CD image from a USB stick, settings across a
-  restart); its run had not finished when 0.3.13 was released.
+  mouse moving a cursor in FreeDOS. The maintenance console (D42) is
+  tested in the same emulated computer: M opens it from the start screen,
+  which does not mention it; a backup to a USB stick image restored over
+  the VM, which then starts; a CD image from the stick; the VM shutting
+  down into the console; and the screen, startup, sound and password
+  settings, kept across a restart.

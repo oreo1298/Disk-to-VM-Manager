@@ -1126,8 +1126,8 @@ the maintenance console (admins know). The console should do more.
     not read it and the restored VM did not start. The password page
     writes the same file. Atomic rewrites now keep the replaced file's
     permissions (0.3.13), and the test checks the file as `rehome`.
-  - In the emulated appliance (`test_maintenance_console`; its second run
-    had not finished when 0.3.13 was committed):
+  - In the emulated appliance (`test_maintenance_console`, passed with
+    0.3.13):
     - M on the start screen (read by OCR) opens the console.
     - A backup to a FAT32 USB stick image, a CD image from it, and a
       restore whose VM then starts.

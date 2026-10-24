@@ -221,4 +221,4 @@ compositor) showing QEMU's own window. It is a normal Rehome VM: the same
   mouse moving a cursor in FreeDOS. The maintenance console (D42) has a
   test in the same emulated computer (M on the start screen, a backup
   restored over the VM, a CD image from a USB stick, settings across a
-  restart); its first run had not finished when 0.3.12 was released.
+  restart); its run had not finished when 0.3.13 was released.

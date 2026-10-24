@@ -680,12 +680,19 @@ def test_maintenance_console(appliance, tmp_path):
         assert new and new != old
         _, vms = sh.run("ls /var/lib/rehome/data/vms; stat -c %U /var/lib/rehome/data/vms/*/vm.toml")
         assert len([v for v in vms.split() if v != "rehome"]) == 1 and "rehome" in vms, vms
+        # The kiosk runs as "rehome": the rewritten configuration stays readable to it.
+        rc, text = sh.run("runuser -u rehome -- cat /etc/rehome/appliance.toml")
+        assert rc == 0 and new in text, text
 
         # When the VM shuts down: the maintenance console instead of turning off.
         page("console.startup_and_shutdown(conf)", "2\\n3\\n3\\n3\\n\\n")
         sh.run("rm -f /run/rehome/vm-started /run/rehome/console-message; "
                "systemctl --no-block start rehome-kiosk.service")
-        _wait_for(sh, f"rehome screen-text {new}", lambda s: freedos.MARKER in s, 900 * SLOW,
+        started = _wait_for(sh, "test -e /run/rehome/vm-started && echo started || "
+                                "cat /run/rehome/console-message 2>/dev/null || true",
+                            lambda s: s.strip() != "", 600 * SLOW, every=10)
+        assert "started" in started, started          # else: why the VM did not start
+        _wait_for(sh, f"rehome screen-text {new}", lambda s: freedos.MARKER in s, 600 * SLOW,
                   every=10)
         sh.run(f"rehome type {new} poweroff && rehome send-keys {new} ret")
         maintenance_open()

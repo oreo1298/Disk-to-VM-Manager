@@ -38,6 +38,17 @@ def test_toml_roundtrip(tmp_path):
     assert back == expected
 
 
+def test_toml_rewrite_keeps_the_files_permissions(tmp_path):
+    """Regression: a restore in an appliance rewrote /etc/rehome/appliance.toml as root
+    with the temp file's 0600, and the kiosk (another user) could not read it."""
+    path = tmp_path / "appliance.toml"
+    toml.dump_atomic({"a": 1}, path)
+    assert path.stat().st_mode & 0o777 == 0o600          # new files stay private
+    path.chmod(0o644)
+    toml.dump_atomic({"a": 2}, path)
+    assert path.stat().st_mode & 0o777 == 0o644 and toml.load(path) == {"a": 2}
+
+
 def test_default_route_detection(tmp_path):
     from rehome.vm import runner
     head = "Iface\tDestination\tGateway \tFlags\tRefCnt\tUse\tMetric\tMask\t\tMTU\tWindow\tIRTT\n"

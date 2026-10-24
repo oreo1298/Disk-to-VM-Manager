@@ -1120,8 +1120,14 @@ the maintenance console (admins know). The console should do more.
     (disk contents, media, config, the old VM deleted), the FAT32 and
     free-space checks, a damaged backup leaving the VM alone, finding
     and copying ISO images, the password files.
-  - In the emulated appliance (`test_maintenance_console`; its first run
-    had not finished when 0.3.12 was committed):
+  - The first emulated run found a bug in 0.3.12. The restore rewrote
+    `/etc/rehome/appliance.toml` as root through `toml.dump_atomic`,
+    whose temp file is private (0600), so the kiosk (user `rehome`) could
+    not read it and the restored VM did not start. The password page
+    writes the same file. Atomic rewrites now keep the replaced file's
+    permissions (0.3.13), and the test checks the file as `rehome`.
+  - In the emulated appliance (`test_maintenance_console`; its second run
+    had not finished when 0.3.13 was committed):
     - M on the start screen (read by OCR) opens the console.
     - A backup to a FAT32 USB stick image, a CD image from it, and a
       restore whose VM then starts.

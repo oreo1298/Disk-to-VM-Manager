@@ -107,14 +107,21 @@ def loads(text: str) -> dict:
 
 
 def dump_atomic(data: dict, path: str | os.PathLike) -> None:
-    """Write TOML atomically (write to temp file, fsync, rename)."""
+    """Write TOML atomically (write to temp file, fsync, rename). A file that is
+    replaced keeps its permissions (the temp file alone would be private)."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     text = dumps(data)
     # Round-trip check: never persist something we cannot read back.
     tomllib.loads(text)
+    try:
+        mode = os.stat(path).st_mode & 0o7777
+    except OSError:
+        mode = None
     fd, tmp = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
     try:
+        if mode is not None:
+            os.fchmod(fd, mode)
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             f.write(text)
             f.flush()

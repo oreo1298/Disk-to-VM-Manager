@@ -261,7 +261,10 @@ def test_backup_and_restore_replace_the_vm(appliance_vm, tmp_path):
     info = maintenance.backup_info(path)
     assert info["name"] == "Windows 98" and info["bytes"] > 0
 
+    conf_path.chmod(0o644)                            # as the build writes it
     restored = maintenance.restore(path, conf, config_path=conf_path)
+    # The kiosk reads it as the "rehome" user: rewriting it as root kept it readable.
+    assert conf_path.stat().st_mode & 0o777 == 0o644
     assert restored.id != cfg.id and restored.name == "Windows 98"
     assert [v.id for v in library.list_vms()] == [restored.id]       # the old one is gone
     assert toml.load(conf_path)["appliance"] == {"vm": restored.id, "name": "Windows 98"}
@@ -327,7 +330,10 @@ def test_the_maintenance_password_is_set_and_removed(tmp_path, monkeypatch):
                         types.SimpleNamespace(returncode=0, stderr=""))
     (tmp_path / "root").mkdir()
     conf, conf_path = {"appliance": {"vm": "x"}}, tmp_path / "appliance.toml"
+    toml.dump_atomic(conf, conf_path)
+    conf_path.chmod(0o644)
     maintenance.set_password("s3cret: yes", conf, root=tmp_path, config_path=conf_path)
+    assert conf_path.stat().st_mode & 0o777 == 0o644
     assert (["chpasswd"], "root:s3cret: yes\n") in ran
     assert maintenance.has_password(tmp_path)
     unit = (tmp_path / runtime.PASSWORD_UNIT).read_text()

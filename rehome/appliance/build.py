@@ -155,6 +155,10 @@ def grub_cfg(root_uuid: str, vm_name: str, extra: str = "") -> str:
         "    set have_grubenv=true\n"
         "    load_env\n"
         "fi\n"
+        "# Chosen in the maintenance console (Screen: always basic graphics).\n"
+        "if [ \"${rehome_default}\" ]; then\n"
+        "    set default=\"${rehome_default}\"\n"
+        "fi\n"
         "if [ \"${next_entry}\" ]; then\n"
         "    set default=\"${next_entry}\"\n"
         "    set next_entry=\n"
@@ -233,31 +237,8 @@ def appliance_config(cfg: VMConfig, opts: Options, base: base_mod.Base) -> dict:
 
 def vm_for_appliance(cfg: VMConfig, opts: Options, media: dict[str, str]) -> VMConfig:
     """The VM's configuration as it lives in the appliance."""
-    out = VMConfig.from_dict(cfg.to_dict())
-    for d in out.disks:
-        d.file, d.format, d.owned = f"disks/{d.id}.qcow2", "qcow2", False
-        if d.source:
-            d.source.mode = "copy"
-    for dev in list(out.cdroms) + list(out.floppies):
-        dev.file = media.get(dev.id, "")
-    out.display.console = "kiosk"
-    if out.machine.accel == "kvm":
-        out.machine.accel = "auto"            # still start (slowly) where virtualization is off
-    if opts.cpu_model:
-        out.machine.cpu_model = opts.cpu_model
-    out.display.gl = False
-    out.sound.backend = "auto"
-    out.shares = []
-    out.passthrough.pci = []
-    out.snapshots, out.current_snapshot = [], ""
-    out.direct_boot = None
-    if opts.network == "none":
-        out.nics = []
-    else:
-        for n in out.nics:
-            if n.mode == "bridge":
-                n.mode, n.bridge = "nat", ""
-    return out
+    return runtime.fit_vm(VMConfig.from_dict(cfg.to_dict()), network=opts.network,
+                          cpu_model=opts.cpu_model, media=media)
 
 
 # --- the build ---------------------------------------------------------------------------
@@ -468,14 +449,8 @@ def _configure(g, opts: Options) -> None:
             image.run(g, "chpasswd < /tmp/rehome-pw", "setting the maintenance password")
         finally:
             g.rm_rf("/tmp/rehome-pw")
-        g.mkdir_p("/etc/systemd/system/rehome-maintenance.service.d")
-        g.write("/etc/systemd/system/rehome-maintenance.service.d/password.conf", (
-            b"# The maintenance console asks for the root password (set when building).\n"
-            b"[Service]\nExecStart=\n"
-            b"ExecStart=-/sbin/agetty -o '-p -- \\\\u' --noclear - linux\n"))
-        g.write("/root/.profile", (
-            b"# Rehome appliance: the maintenance console after logging in on tty1.\n"
-            b"if [ \"$(tty)\" = /dev/tty1 ]; then exec /usr/local/bin/rehome appliance console; fi\n"
-        ))
+        g.mkdir_p("/" + os.path.dirname(runtime.PASSWORD_UNIT))
+        g.write("/" + runtime.PASSWORD_UNIT, runtime.PASSWORD_UNIT_TEXT.encode())
+        g.write("/" + runtime.ROOT_PROFILE, runtime.ROOT_PROFILE_TEXT.encode())
     else:
         image.run(g, "passwd -l root >/dev/null", "locking the root account")

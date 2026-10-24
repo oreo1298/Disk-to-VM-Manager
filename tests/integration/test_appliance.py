@@ -574,3 +574,155 @@ def test_a_vm_with_only_a_ps2_mouse_gets_the_computers_mouse(appliance, tmp_path
         assert y == 0 and x > 300, (x, y, kernel())
     finally:
         pc.stop()
+
+
+def _stick_with_files(path: Path) -> None:
+    """A USB stick image: one FAT32 partition labelled STICK, with a CD image on it."""
+    from rehome.inspect import gfs
+    subprocess.run(["qemu-img", "create", "-f", "raw", str(path), "256M"], check=True,
+                   capture_output=True)
+    with gfs.session([gfs.Drive(str(path), "raw", False)]) as g:
+        g.part_init("/dev/sda", "mbr")
+        g.part_add("/dev/sda", "p", 2048, -1)
+        g.part_set_mbr_id("/dev/sda", 1, 0x0C)
+        g.mkfs("vfat", "/dev/sda1", label="STICK")
+        g.mount("/dev/sda1", "/")
+        g.mkdir("/Drivers")
+        g.write("/Drivers/DRIVERS.ISO", b"CD001" * 4096)
+
+
+def _wait_for(sh, cmd: str, want, timeout: float, every: float = 5) -> str:
+    deadline = time.monotonic() + timeout
+    while True:
+        _, out = sh.run(cmd)
+        if want(out):
+            return out
+        assert time.monotonic() < deadline, (cmd, out)
+        time.sleep(every)
+
+
+def test_maintenance_console(appliance, tmp_path):
+    """The start screen does not mention the maintenance console, but M opens it; its
+    pages back the VM up to a USB stick and restore it, take CD images from the stick,
+    and keep startup, screen, sound and password settings across a restart (D42)."""
+    import base64
+    cfg, out = appliance
+    image = tmp_path / "console.qcow2"
+    subprocess.run(["qemu-img", "create", "-f", "qcow2", "-b", str(out), "-F", "qcow2",
+                    str(image)], check=True, capture_output=True)
+    _stick_with_files(tmp_path / "stick.img")
+    pc = _boot_and_check(cfg, image, tmp_path, uefi=False)
+    try:
+        sh = pc.serial
+        # The console's pages, run from the serial shell with typed answers.
+        helper = ("export PYTHONPATH=/opt/rehome REHOME_DATA_DIR=/opt/rehome/data "
+                  "REHOME_HOME=/var/lib/rehome REHOME_RUNTIME_DIR=/run/rehome REHOME_APPLIANCE=1\n"
+                  "exec python3 -c 'import sys\n"
+                  "from rehome.appliance import console, maintenance, runtime\n"
+                  "conf = runtime.load_config()\n"
+                  "exec(sys.argv[1])' \"$1\"\n")
+        sh.run(f"echo {base64.b64encode(helper.encode()).decode()} | base64 -d > /tmp/console-do")
+
+        def page(code: str, answers: str = "") -> str:
+            arg = base64.b64encode(code.encode()).decode()
+            rc, text = sh.run(f"printf '{answers}' | sh /tmp/console-do "
+                              f"\"$(echo {arg} | base64 -d)\" 2>&1", timeout=900 * SLOW)
+            assert rc == 0, text
+            return text
+
+        def maintenance_open():
+            _wait_for(sh, "systemctl is-active rehome-maintenance", lambda s: s.strip() == "active",
+                      300 * SLOW)
+
+        def vm_id() -> str:
+            return sh.run("sed -n 's/^vm = \"\\(.*\\)\"$/\\1/p' /etc/rehome/appliance.toml")[1].strip()
+
+        # Long enough to press M in an emulated computer.
+        sh.run(f"rm -f /run/rehome/vm-started; rehome force-off {cfg.id}")
+        maintenance_open()
+        page("console.startup_and_shutdown(conf)", "2\\n60\\n\\n")
+        _, st = sh.run("cat /var/lib/rehome/appliance/settings.toml; "
+                       "stat -c %U /var/lib/rehome/appliance/settings.toml")
+        assert "delay = 60" in st and st.strip().endswith("rehome"), st
+        sh.run("rm -f /run/rehome/console-message /run/rehome/limits.json; "
+               "systemctl --no-block start rehome-kiosk.service")
+        _wait_for(sh, "test -e /run/rehome/limits.json && echo yes", lambda s: "yes" in s,
+                  300 * SLOW, every=2)
+        time.sleep(4 * SLOW)
+        text = pc.screen_text("starting").lower()
+        assert "starting" in text, text
+        assert "maintenance" not in text and "press" not in text, text
+        pc.type("m")
+        maintenance_open()
+        rc, _ = sh.run("test -e /run/rehome/vm-started")
+        assert rc != 0                                  # the VM never started
+
+        # Back up to the stick (the VM gave it back when it stopped).
+        _wait_for(sh, "blkid -L STICK || true", lambda s: "/dev/" in s, 120 * SLOW)
+        text = page("console.back_up(conf)", "1\\n")
+        assert "Saved \"Rehome backups/" in text, text
+        stick = sh.run("blkid -L STICK")[1].strip()
+        _, files = sh.run(f"mkdir -p /mnt/t && mount -o ro {stick} /mnt/t && "
+                          "ls -l '/mnt/t/Rehome backups'; umount /mnt/t")
+        assert ".rehome" in files, files
+
+        # A CD image from the stick goes into the VM's drive.
+        page("console.insert_cd(console._the_vm(conf))", "1\\n1\\n")
+        _, vm = sh.run("grep -h DRIVERS.ISO /var/lib/rehome/data/vms/*/vm.toml; "
+                       "stat -c %U /var/lib/rehome/data/vms/*/media/DRIVERS.ISO")
+        assert "media/DRIVERS.ISO" in vm and vm.strip().endswith("rehome"), vm
+
+        # Restore the backup: a new VM replaces the old one, and starts.
+        old = vm_id()
+        text = page("console.restore(conf)", "1\\n1\\nyes\\n")
+        assert "Restored" in text, text
+        new = vm_id()
+        assert new and new != old
+        _, vms = sh.run("ls /var/lib/rehome/data/vms; stat -c %U /var/lib/rehome/data/vms/*/vm.toml")
+        assert len([v for v in vms.split() if v != "rehome"]) == 1 and "rehome" in vms, vms
+
+        # When the VM shuts down: the maintenance console instead of turning off.
+        page("console.startup_and_shutdown(conf)", "2\\n3\\n3\\n3\\n\\n")
+        sh.run("rm -f /run/rehome/vm-started /run/rehome/console-message; "
+               "systemctl --no-block start rehome-kiosk.service")
+        _wait_for(sh, f"rehome screen-text {new}", lambda s: freedos.MARKER in s, 900 * SLOW,
+                  every=10)
+        sh.run(f"rehome type {new} poweroff && rehome send-keys {new} ret")
+        maintenance_open()
+        _, msg = sh.run("cat /run/rehome/console-message")
+        assert "was shut down" in msg, msg
+        assert pc.proc.poll() is None                   # the computer is still on
+
+        # Settings kept across a restart: basic graphics, the console at power-on, the
+        # sound volume, the password.
+        page("console.screen(conf)", "1\\n2\\n\\n")
+        page("console.startup_and_shutdown(conf)", "1\\n\\n")
+        page("maintenance.set_password(" + repr(PASSWORD) + ", conf)")
+        _, env = sh.run("grub-editenv /boot/grub/grubenv list; "
+                        "cat /var/lib/rehome/appliance/settings.toml")
+        assert "rehome_default=vm-basic" in env and "gl = false" in env, env
+        assert 'open = "maintenance"' in env, env
+        _, control = sh.run("amixer scontrols | sed -n \"1s/^Simple mixer control '\\(.*\\)',.*/\\1/p\"")
+        control = control.strip()
+        assert control, sh.run("amixer scontrols; cat /proc/asound/cards")[1]
+        sh.run(f"amixer -q sset '{control}' 37% && alsactl store")
+        _, volume = sh.run(f"amixer sget '{control}' | grep -o '[0-9]* \\[[0-9]*%\\]' | head -1")
+        assert "%" in volume, volume
+        menu = page("import threading, os\n"
+                    "threading.Timer(15, lambda: (sys.stdout.flush(), os._exit(0))).start()\n"
+                    "console.main()")
+        assert "Back up or restore the VM" in menu and "Power off" in menu, menu
+        assert "Disk disk0" in page("console.storage(conf)"), "storage page"
+        sh.send("systemctl reboot\r")
+        time.sleep(10)
+        sh.buf = ""
+        sh.login(timeout=600 * SLOW)
+        maintenance_open()
+        _, after = sh.run("cat /proc/cmdline; systemctl is-active rehome-kiosk; "
+                          "grub-editenv /boot/grub/grubenv list; "
+                          f"amixer sget '{control}' | grep -o '[0-9]* \\[[0-9]*%\\]' | head -1")
+        assert "rehome.graphics=basic" in after and "rehome.mode=vm" in after, after
+        assert "\nactive" not in after and "recordfail=1" not in after, after
+        assert volume.strip() in after, (volume, after)
+    finally:
+        pc.stop()

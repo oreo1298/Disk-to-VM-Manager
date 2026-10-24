@@ -108,6 +108,86 @@ def save_settings(data: dict) -> None:
     toml.dump_atomic(data, SETTINGS)
 
 
+# What happens at power-on and when the VM shuts down (the maintenance console's
+# "Startup and shutdown"); the build sets the first delay (kiosk.countdown).
+OPEN = ("vm", "maintenance")
+WHEN_VM_SHUTS_DOWN = ("poweroff", "restart", "maintenance")
+MAX_DELAY = 60
+
+
+def startup(conf: dict | None = None, settings: dict | None = None) -> dict:
+    """``delay`` (seconds "Starting ..." waits for M), ``open`` (at power-on: the VM or
+    the maintenance console), ``when_vm_shuts_down``."""
+    if conf is None:
+        try:
+            conf = load_config()
+        except RehomeError:
+            conf = {}
+    s = (load_settings() if settings is None else settings).get("startup", {})
+    try:
+        delay = int(s.get("delay", conf.get("kiosk", {}).get("countdown", 3)))
+    except (TypeError, ValueError):
+        delay = 3
+    return {"delay": max(0, min(MAX_DELAY, delay)),
+            "open": s.get("open") if s.get("open") in OPEN else "vm",
+            "when_vm_shuts_down": s.get("when_vm_shuts_down")
+            if s.get("when_vm_shuts_down") in WHEN_VM_SHUTS_DOWN else "poweroff"}
+
+
+def opengl(settings: dict | None = None, args: dict | None = None) -> bool:
+    """Whether QEMU's window draws with OpenGL: ``rehome.gl=on|off`` on the kernel command
+    line (one boot), else the maintenance console's "Screen" setting (on by default)."""
+    word = (cmdline() if args is None else args).get("rehome.gl", "")
+    if word in ("on", "off"):
+        return word == "on"
+    return bool((load_settings() if settings is None else settings).get("screen", {})
+                .get("gl", True))
+
+
+def fit_vm(cfg, network: str = "nat", cpu_model: str = "", media: dict[str, str] | None = None):
+    """A VM's configuration as it lives in an appliance (built, or restored from a backup):
+    standalone disks in ``disks/``, the media in ``media`` (device id -> file in the VM's
+    folder; other drives are empty), shown full screen by the kiosk, without host
+    resources the appliance does not have."""
+    media = media or {}
+    for d in cfg.disks:
+        d.file, d.format, d.owned = f"disks/{d.id}.qcow2", "qcow2", False
+        if d.source:
+            d.source.mode = "copy"
+    for dev in list(cfg.cdroms) + list(cfg.floppies):
+        dev.file = media.get(dev.id, "")
+    cfg.display.console = "kiosk"
+    if cfg.machine.accel == "kvm":
+        cfg.machine.accel = "auto"            # still start (slowly) where virtualization is off
+    if cpu_model:
+        cfg.machine.cpu_model = cpu_model
+    cfg.display.gl = False
+    cfg.sound.backend = "auto"
+    cfg.shares = []
+    cfg.passthrough.pci = []
+    cfg.snapshots, cfg.current_snapshot = [], ""
+    cfg.direct_boot = None
+    if network == "none":
+        cfg.nics = []
+    else:
+        for n in cfg.nics:
+            if n.mode == "bridge":
+                n.mode, n.bridge = "nat", ""
+    return cfg
+
+
+# The maintenance password (set when building, or in the maintenance console): the
+# console's unit runs a login prompt instead, and root's login opens the console.
+PASSWORD_UNIT = "etc/systemd/system/rehome-maintenance.service.d/password.conf"
+PASSWORD_UNIT_TEXT = ("# The maintenance console asks for the root password.\n"
+                      "[Service]\nExecStart=\n"
+                      "ExecStart=-/sbin/agetty -o '-p -- \\\\u' --noclear - linux\n")
+ROOT_PROFILE = "root/.profile"
+ROOT_PROFILE_TEXT = ("# Rehome appliance: the maintenance console after logging in on tty1.\n"
+                     "if [ \"$(tty)\" = /dev/tty1 ]; then exec /usr/local/bin/rehome appliance "
+                     "console; fi\n")
+
+
 def cmdline(text: str | None = None) -> dict[str, str]:
     text = text if text is not None else Path("/proc/cmdline").read_text()
     out = {}
@@ -140,6 +220,8 @@ def _read_json(path: Path) -> dict | None:
 def boot() -> int:
     """rehome-boot.service: start the VM, or the maintenance console."""
     mode = cmdline().get("rehome.mode", "vm")
+    if mode == "vm" and startup()["open"] == "maintenance":
+        mode = "maintenance"                    # chosen in the maintenance console
     if mode == "maintenance":
         clear_recordfail()
         unit = "rehome-maintenance.service"
@@ -286,17 +368,25 @@ def kiosk() -> int:
     free, grow = _disk_numbers(cfg)
     checks = hardware.start_checks(cfg, report, data_free=free, virtual_total=grow)
     gpu = hardware.has_gpu_acceleration() and not basic
-    gl = {"on": True, "off": False}.get(cmdline().get("rehome.gl", ""), True)
+    settings = load_settings()
+    gl = opengl(settings)
+    start = startup(conf, settings)
     _write_json(LIMITS, {"memory_mib": cfg.machine.memory_mib, "cpus": cfg.machine.cpus,
                          "screen": hardware.screen_size(), "gl": gl})
-    countdown = int(conf.get("kiosk", {}).get("countdown", 3)) + (8 if checks.notes else 0)
-    _say([f"Starting {cfg.name}...", ""] + [f"! {n}" for n in checks.notes]
-         + ["", "Press M for the maintenance console."])
-    if _wait_key(countdown) == "m":
-        _say(["Opening the maintenance console..."])
-        _write_json(INTENT, {"outcome": "maintenance"})
+
+    def starting(notes: list[str]) -> bool:
+        """"Starting <VM>..." for a few seconds; False if M was pressed meanwhile. Nothing
+        says so: the maintenance console is for whoever looks after the computer."""
+        _say([f"Starting {cfg.name}..."] + ([""] + [f"! {n}" for n in notes] if notes else []))
+        if _wait_key(start["delay"] + (8 if notes else 0)) == "m":
+            _say(["Opening the maintenance console..."])
+            _write_json(INTENT, {"outcome": "maintenance"})
+            return False
+        _say([f"Starting {cfg.name}..."])
+        return True
+
+    if not starting(checks.notes):
         return 0
-    _say([f"Starting {cfg.name}..."])
 
     env = dict(os.environ)
     env.pop("DISPLAY", None)
@@ -331,6 +421,18 @@ def kiosk() -> int:
             restarts += 1
             _say([f"Restarting {cfg.name}..."])
             continue
+        if result and result.get("reason") == "guest-shutdown" and \
+                not result.get("power_button"):
+            # Shut down from inside the VM: what the maintenance console chose. The
+            # computer's power button always turns the computer off.
+            then = start["when_vm_shuts_down"]
+            if then == "restart":
+                if not starting([]):
+                    return 0
+                continue
+            if then == "maintenance":
+                result = {"outcome": "maintenance", "reason": "guest-shutdown",
+                          "message": f"{cfg.name} was shut down."}
         if result or env.get("WLR_RENDERER") == "pixman":
             break
         # cage could not use the graphics hardware; software rendering always works.
@@ -375,7 +477,9 @@ def session() -> int:
     stop = threading.Event()
     conf = load_config()
     given: dict[str, object] = {}                 # USB devices the VM has now
-    agents = [threading.Thread(target=power_button_agent, args=(cfg, stop), daemon=True)]
+    pressed = threading.Event()                   # the computer's power button
+    agents = [threading.Thread(target=power_button_agent, args=(cfg, stop, pressed),
+                               daemon=True)]
     if conf.get("kiosk", {}).get("usb_auto", True):
         agents.append(threading.Thread(target=usb_agent, args=(cfg, stop),
                                        kwargs={"attached": given}, daemon=True))
@@ -414,6 +518,8 @@ def session() -> int:
     runner.after_stop(cfg)
     log.info("the VM stopped: %s", reason or "QEMU quit without saying why")
     result = outcome_for(reason)
+    if pressed.is_set():
+        result["power_button"] = True
     if result["outcome"] == "error" and not result.get("message"):
         log_tail = runner._tail(cfg.dir / "logs" / "qemu.log")
         result.update(message=crash_message(runner.qemu_crash_line(log_tail),
@@ -454,8 +560,9 @@ def outcome_for(reason: str) -> dict:
     return {"outcome": "error", "reason": reason or "crash"}
 
 
-def power_button_agent(cfg, stop: threading.Event) -> None:
-    """The computer's power button asks the guest to shut down (ACPI), like on real hardware."""
+def power_button_agent(cfg, stop: threading.Event, pressed: threading.Event | None = None) -> None:
+    """The computer's power button asks the guest to shut down (ACPI), like on real hardware.
+    ``pressed`` is set once it was pressed."""
     from rehome.vm import runner
     fds = []
     for ev in sorted(Path("/sys/class/input").glob("event*")):
@@ -480,6 +587,8 @@ def power_button_agent(cfg, stop: threading.Event) -> None:
                                         int.from_bytes(data[i + 20:i + 24], "little"))
                     if typ == 1 and code == KEY_POWER and value == 1:
                         log.warning("power button pressed: asking %s to shut down", cfg.name)
+                        if pressed is not None:
+                            pressed.set()
                         try:
                             runner.shutdown(cfg)
                         except RehomeError as e:

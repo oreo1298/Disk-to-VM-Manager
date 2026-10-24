@@ -149,6 +149,13 @@ def snapshot_list(path: str) -> list[dict]:
     return data.get("snapshots", [])
 
 
+def measure(path: str | os.PathLike, fmt: str = "qcow2") -> int:
+    """Bytes a standalone qcow2 copy of the image's current state needs (no checkpoints)."""
+    cp = run([_img(), "measure", "--output=json", "-O", "qcow2", "-f", fmt, str(path)],
+             what="Measuring the disk image", timeout=120)
+    return int(json.loads(cp.stdout)["required"])
+
+
 def actual_size(path: str | os.PathLike) -> int:
     try:
         return os.stat(path).st_blocks * 512

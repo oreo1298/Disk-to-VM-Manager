@@ -465,7 +465,7 @@ def test_session_reads_the_shutdown_reason_when_qemu_exits_at_once(monkeypatch, 
     monkeypatch.setattr(runtime, "load_config", lambda: {"kiosk": {"usb_auto": False}})
     monkeypatch.setattr(runtime, "_read_json", lambda path: {})
     monkeypatch.setattr(runtime, "_write_json", lambda path, data: written.setdefault(path.name, data))
-    monkeypatch.setattr(runtime, "power_button_agent", lambda cfg, stop: None)
+    monkeypatch.setattr(runtime, "power_button_agent", lambda *a: None)
     monkeypatch.setattr(runtime, "STARTED", Path(os.devnull))
     monkeypatch.setattr(runner, "start", lambda *a, **k: None)
     monkeypatch.setattr(runner, "runtime", lambda c: types.SimpleNamespace(qmp_ui="x"))

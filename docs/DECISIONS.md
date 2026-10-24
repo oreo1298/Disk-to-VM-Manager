@@ -1042,3 +1042,89 @@ has to be moved around a lot to get past them.
   acceleration rule) from the middle of the screen to its right, bottom,
   left and top edges with no walls on the way
   (`test_a_vm_with_only_a_ps2_mouse_gets_the_computers_mouse`, passed).
+
+## D42. Appliance: a hidden way into a fuller maintenance console
+
+Asked for: the start screen should not tell users they can press M for
+the maintenance console (admins know). The console should do more.
+
+- **Start screen.** "Starting <VM>…" stays in the top-left corner for the
+  same few seconds (plus notes when something limits the VM). M still
+  opens the console, but nothing says so. Any other key just starts the VM
+  sooner. The wait is a console setting (0–60 s); with 0 the boot menu
+  (Esc) is the way in.
+- **Main menu.** Sixteen numbered pages plus R (restart) and P (power off),
+  in two columns, so header and menu fit the 80×25 text screen of the
+  basic-graphics boot. "Restart with basic graphics" moved to **Screen**.
+- **Backups.** A backup is a `rehome export` file (`.rehome`), so Rehome on
+  a computer can import it and any export can be restored.
+  - It goes to a "Rehome backups" folder on a USB drive. Its size is
+    measured first (`qemu-img measure`: the disks without checkpoints).
+  - FAT32's 4 GB file limit is checked before starting.
+  - The disks are converted on the appliance's data partition when it
+    has room, so the USB drive needs space for the backup only once
+    (`export(work_dir=)`).
+  - The backup and restore run as root in the console process; the
+    restored VM is then given to the `rehome` user.
+- **Restore.** The backup's VM is imported, fitted for the appliance (the
+  same `fit_vm` the build uses), and saved.
+  - Only then does `/etc/rehome/appliance.toml` point at it and the old
+    VM get deleted. A damaged backup or a full drive leaves the old VM
+    in place.
+  - CD/DVD images are not in backups; images the old VM used from its
+    media folder are copied over.
+  - The restored VM takes the backup's name.
+  - On a computer, importing a backup made in an appliance switches its
+    display from the appliance's full-screen window to Rehome's console.
+- **CD/DVD images.** `.iso` files from a USB drive (its top two folder
+  levels) are copied into the VM's media folder and put in its CD drive
+  (one is added if it has none).
+  - This is how files reach Windows 95/98, which cannot read USB sticks.
+  - Taking the disc out offers to delete the copy.
+- **Startup and shutdown** (settings.toml on the data partition, read by
+  the kiosk):
+  - At power-on: the VM, or the console. `boot()` redirects and clears
+    GRUB's failure flag, as the console's boot entry does.
+  - When the VM shuts itself down: power off (default), start it again
+    (with the same "Starting …" wait, so M still works), or the console
+    with "<VM> was shut down."
+  - The power button always turns the computer off. The session marks a
+    shutdown the button asked for (`power_button`), so "start again"
+    cannot trap the computer on.
+- **Screen.**
+  - "Always basic graphics" is a GRUB environment variable
+    (`rehome_default=vm-basic`) that the boot menu reads before
+    `next_entry`.
+  - OpenGL drawing is a setting. `rehome.gl=on|off` on the kernel
+    command line still wins for one boot.
+- **Date and time.**
+  - Set by hand for computers that are never online. This turns internet
+    time off: timedated refuses otherwise. `set-time` is retried while
+    timesyncd stops.
+  - The time zone page moved here from the network page.
+- **Sound.** `alsamixer`, then `alsactl store`; ALSA's own service restores
+  the state at boot. A test tone comes from `speaker-test`.
+- **Maintenance password.** Set, change or remove it from the console.
+  - It uses the build's mechanism (`chpasswd`, a unit drop-in running a
+    login prompt, root's `.profile` opening the console). The texts are
+    shared from `runtime` so both write the same files.
+  - It takes effect the next time the console opens.
+- **Storage, logs.** Free space, the VM's disks/images/checkpoints. The
+  journal of this and the previous start, and the VM's QEMU log, in `less`.
+- Tested:
+  - Unit tests: the start screen's text, M, the wait, the shutdown
+    choices and the power button. The settings' checks, the boot
+    redirect and GRUB's order. The menu fitting 25 lines and the pages
+    with typed answers.
+  - With real files and `qemu-img`: a backup and restore round trip
+    (disk contents, media, config, the old VM deleted), the FAT32 and
+    free-space checks, a damaged backup leaving the VM alone, finding
+    and copying ISO images, the password files.
+  - In the emulated appliance (`test_maintenance_console`; its first run
+    had not finished when 0.3.12 was committed):
+    - M on the start screen (read by OCR) opens the console.
+    - A backup to a FAT32 USB stick image, a CD image from it, and a
+      restore whose VM then starts.
+    - "When the VM shuts down: open the console".
+    - Basic graphics, console at power-on, the volume and the password,
+      checked after a restart.

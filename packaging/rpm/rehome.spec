@@ -11,7 +11,7 @@
 %global __brp_python_bytecompile %{nil}
 
 Name:           rehome
-Version:        0.3.11
+Version:        0.3.12
 Release:        1%{?dist}
 Summary:        Turn installed operating systems into QEMU/KVM virtual machines
 License:        GPL-3.0-or-later
@@ -142,6 +142,12 @@ python3 packaging/layout.py install \
 %{_datadir}/icons/hicolor/symbolic/apps/io.github.oreo1298.Rehome-symbolic.svg
 
 %changelog
+* Sat Oct 24 2026 Rehome contributors - 0.3.12-1
+- Appliances: the start screen no longer mentions the maintenance console (M still
+  opens it). The console gains backups and restores on USB drives, memory and
+  CD/DVD images, date and time, sound, screen, startup and shutdown choices, the
+  maintenance password, storage and logs.
+
 * Fri Oct 23 2026 Rehome contributors - 0.3.11-1
 - Appliances: VMs with only a PS/2 mouse (DOS, Windows 9x) get the computer's mice
   directly; the mouse no longer stops at invisible edges.

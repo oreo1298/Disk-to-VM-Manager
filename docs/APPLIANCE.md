@@ -72,15 +72,17 @@ itself never writes to drives.
 At power-on:
 
 1. The boot menu is hidden; the VM starts directly.
-2. A short message ("Starting Windows XP… Press M for the maintenance
-   console") appears, with notes when something limits the VM: no
+2. "Starting Windows XP…" appears in the top-left corner for a few
+   seconds (3 by default), with notes when something limits the VM: no
    virtualization, less memory than the VM was given (the VM gets what the
-   computer can spare), a small drive.
+   computer can spare), a small drive. Pressing **M** then opens the
+   maintenance console. Nothing on the screen says so: the console is for
+   whoever looks after the computer, not for the people using the VM.
 3. The VM appears full screen, scaled to the screen.
 
 | You do | What happens |
 |---|---|
-| Shut down the VM | The computer turns off. |
+| Shut down the VM | The computer turns off (or, if chosen in the maintenance console, the VM starts again or the console opens). |
 | Press the power button | The VM is asked to shut down (like pressing a PC's power button); then the computer turns off. Holding it forces the computer off. |
 | Plug in a USB device | It is given to the VM, except keyboards and mice (they already reach the VM), network adapters, and the drive the appliance runs from. |
 | Built-in devices (a laptop's camera, fingerprint reader, Bluetooth) | They stay with the appliance; include one in the maintenance console's **USB devices** to give it to the VM. |
@@ -103,9 +105,11 @@ cannot keep the pointer from stopping at the screen's edges, so use a
 mouse.
 
 If the picture is garbled or the screen stays black with a particular
-graphics card, press Esc while the computer starts, select the **Start**
-entry, press `e`, add `rehome.gl=off` to the line that starts with `linux`,
-and press F10; or choose **with basic graphics**.
+graphics card, use the maintenance console's **Screen** page: turn OpenGL
+drawing off (garbled picture), or always start with basic graphics (black
+screen). For a single start, press Esc while the computer starts and
+choose **with basic graphics**, or select the **Start** entry, press `e`,
+add `rehome.gl=off` to the line that starts with `linux`, and press F10.
 
 ### Network
 
@@ -157,21 +161,30 @@ on the next start.
 
 ### The maintenance console
 
-A text menu, reached from the boot menu, by pressing M before the VM
-starts, or automatically when the VM cannot start (the reason is shown at
-the top):
+A text menu for whoever looks after the computer. It opens from the boot
+menu, by pressing M while "Starting …" shows, or by itself when the VM
+cannot start (the reason is shown at the top). Its header shows the VM,
+the network, the clock and the free space.
 
-1. Start the VM
-2. Checkpoints — take one, go back to one, delete one
-3. USB devices — see which devices go to the VM; exclude or include one
-4. Network, Wi-Fi and time zone — connect to a Wi-Fi network, test the
-   connection, change the time zone
-5. Hardware report — processor, virtualization, memory, graphics, displays, sound, network
-6. Save diagnostics to a USB stick — logs and reports in one `.tar.gz` file
-7. Shell — a root shell for repairs (`rehome --help` works there)
-8. Restart with basic graphics
-9. Restart
-0. Power off
+| | Page | What it does |
+|---|---|---|
+| 1 | Start the VM | |
+| 2 | Checkpoints | Take one, go back to one, delete one (chosen by number). |
+| 3 | Back up or restore the VM | **Back up** writes the VM to a USB drive as one `.rehome` file in a "Rehome backups" folder (FAT32 drives hold backups up to 4 GB; exFAT and NTFS drives any size). **Restore** replaces the VM with a backup from a USB drive; its checkpoints go, CD/DVD images the appliance already has stay. Rehome on a computer imports these files too (`rehome import-vm`), and any Rehome export can be restored. |
+| 4 | VM settings | Memory and processors; **put a CD/DVD image in**: an `.iso` from a USB drive is copied to the appliance and put in the VM's CD drive (a way to get drivers and programs into Windows 98, which cannot read USB sticks), and taken out again. |
+| 5 | USB devices | See which devices go to the VM; exclude or include one. |
+| 6 | Network and Wi-Fi | Connect to a Wi-Fi network, forget one, test the connection. |
+| 7 | Date, time and time zone | Internet time, or the date and time set by hand (for computers that are never online); the time zone. |
+| 8 | Sound | The volume (a mixer; it is kept across restarts), a test sound. |
+| 9 | Screen | Always start with basic graphics; OpenGL drawing on or off; restart once with basic graphics. |
+| 10 | Startup and shutdown | At power-on, start the VM or open the console; how many seconds "Starting …" waits for M (0–60); when the VM shuts down, turn the computer off, start the VM again, or open the console. The power button always turns the computer off. |
+| 11 | Maintenance password | Set, change or remove the password the console asks for (log in as `root`). Building with `--maintenance-password` sets one from the start. |
+| 12 | Storage | Free space; the VM's disks, CD/DVD images and checkpoints. |
+| 13 | Hardware report | Processor, virtualization, memory, graphics, displays, sound, network. |
+| 14 | Logs | The appliance's log of this start and of the one before, and the VM's QEMU log. |
+| 15 | Save diagnostics to USB | Logs and reports in one `.tar.gz` file. |
+| 16 | Shell | A root shell for repairs (`rehome --help` works there). |
+| R, P | Restart, Power off | |
 
 ## What is inside
 
@@ -205,4 +218,7 @@ compositor) showing QEMU's own window. It is a normal Rehome VM: the same
   0.3.1 ([DECISIONS.md](DECISIONS.md) D32) but not yet re-checked on that
   laptop. A VM with only a PS/2 mouse (DOS, Windows 9x) gets the
   computer's mice directly (D41), tested with the appliance's own PS/2
-  mouse moving a cursor in FreeDOS.
+  mouse moving a cursor in FreeDOS. The maintenance console (D42) has a
+  test in the same emulated computer (M on the start screen, a backup
+  restored over the VM, a CD image from a USB stick, settings across a
+  restart); its first run had not finished when 0.3.12 was released.

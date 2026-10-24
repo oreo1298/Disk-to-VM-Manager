@@ -153,7 +153,13 @@ UUIDs); first boot (data partition grown, hardware report); the VM on
 screen; GRUB's `recordfail` cleared once the VM shows; the USB stick handed
 to the VM; the power button reaching the appliance; and, after choosing the
 maintenance entry for the next boot, the console after a password login on
-the screen and starting the VM from it.
+the screen and starting the VM from it. Two more boots check that a VM
+with only a PS/2 mouse gets the computer's mouse (D41), and the
+maintenance console (D42): M on the start screen, which does not mention
+it; a backup to a FAT32 USB stick image restored over the VM, which then
+starts; a CD image from the stick; the VM shutting down into the console;
+and basic graphics, the console at power-on, the volume and the password
+after a restart.
 
 The base system (about 1.2 GB of downloads) is cached in
 `~/.cache/rehome/appliance` (`REHOME_APPLIANCE_CACHE` overrides it) and

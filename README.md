@@ -16,7 +16,7 @@ Rehome is a Linux desktop app for QEMU/KVM. It does two jobs:
 
 Everything the GUI does is also available on the command line (`rehome --help`).
 
-> **Status: 0.3.11, early release.** The engine, CLI and GUI work, and they are
+> **Status: 0.3.12, early release.** The engine, CLI and GUI work, and they are
 > tested on synthetic disks and on real FreeDOS, ReactOS and Ubuntu guests. Real
 > Windows and 9x installations were not tested yet; see
 > [What has been tested](#what-has-been-tested).
@@ -333,9 +333,12 @@ hardware is gone.
 
 - Works on BIOS and UEFI computers, desktops and laptops; the VM gets the
   memory and processors the computer can spare.
-- A hidden boot menu (Esc) offers basic graphics and a **maintenance
-  console**: checkpoints, USB devices, Wi-Fi, a hardware report, saving
-  diagnostics to a USB stick, and a root shell.
+- A hidden boot menu (Esc), or M while "Starting …" shows (nothing on the
+  screen says so), opens a **maintenance console**: checkpoints, backups to
+  and restores from a USB drive, memory and CD/DVD images, USB devices,
+  Wi-Fi, date and time, sound, screen, what happens at power-on and when
+  the VM shuts down, a password, storage, logs, diagnostics and a root
+  shell.
 - Built without root. The first build downloads a base system (Ubuntu
   26.04 LTS with QEMU, about 1.2 GB) and caches it.
 - Turn Secure Boot off and virtualization on in the target computer's

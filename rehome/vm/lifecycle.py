@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import shutil
 import tarfile
+import tempfile
 import uuid
 from pathlib import Path
 
@@ -83,8 +84,12 @@ def clone(cfg: VMConfig, new_name: str, progress=None, folder: str | None = None
     return new
 
 
-def export(cfg: VMConfig, dest: str, compress: bool = False, progress=None) -> Path:
-    """Export to a ``.rehome`` archive with standalone disks (sources flattened)."""
+def export(cfg: VMConfig, dest: str, compress: bool = False, progress=None,
+           work_dir: Path | None = None) -> Path:
+    """Export to a ``.rehome`` archive with standalone disks (sources flattened).
+
+    The disks are converted in ``work_dir`` (default: next to ``dest``) first.
+    """
     if runner.state(cfg).active:
         raise RehomeError(f"\"{cfg.name}\" must be turned off to export it.")
     dest_path = Path(dest)
@@ -92,7 +97,10 @@ def export(cfg: VMConfig, dest: str, compress: bool = False, progress=None) -> P
         dest_path = dest_path / f"{library.slug(cfg.name)}.rehome"
     if dest_path.exists():
         raise RehomeError(f"{dest_path} already exists.", fix="Choose another file name.")
-    work = dest_path.with_name(dest_path.name + ".work")
+    if work_dir is not None:
+        work = Path(tempfile.mkdtemp(prefix=".rehome-export-", dir=work_dir))
+    else:
+        work = dest_path.with_name(dest_path.name + ".work")
     (work / "disks").mkdir(parents=True)
     try:
         out = VMConfig.from_dict(cfg.to_dict())
@@ -153,6 +161,10 @@ def import_bundle(archive: str, name: str | None = None) -> VMConfig:
             raise RehomeError(f"{archive} is not a Rehome export.",
                               fix="Choose a .rehome file created by `rehome export`.")
         cfg = VMConfig.from_dict(toml.loads(tar.extractfile("vm.toml").read().decode()))
+        if cfg.display.console == "kiosk":
+            # A backup made in an appliance: Rehome's console (an appliance's restore
+            # sets the full screen kiosk display again).
+            cfg.display.console = "dbus"
         cfg.id = str(uuid.uuid4())
         cfg.name = library.unique_name(name or cfg.name)
         cfg.created = now_iso()

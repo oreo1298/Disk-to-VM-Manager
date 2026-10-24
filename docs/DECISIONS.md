@@ -1010,3 +1010,36 @@ NDIS: Windows protection error".
   random relocated bytes. An import of a Windows 98 FE disk carrying such
   an NDIS.VXD and ESDI_506.PDR patches both in the overlay; the source is
   unchanged. Not run with Microsoft's real NDIS.VXD (none here).
+
+## D41. Appliance: mice go straight to VMs that only have a PS/2 mouse
+
+Reported: in a Windows 98 appliance, the mouse "hits invisible walls" and
+has to be moved around a lot to get past them.
+
+- A PS/2 mouse moves the guest's own cursor by deltas. QEMU's SDL window
+  asks SDL for relative mode, which on Wayland needs the compositor's
+  relative-pointer and pointer-constraints protocols. cage has neither in
+  Ubuntu 26.04 (0.2.1). 0.3.1 adds relative-pointer only. So the hidden
+  pointer stopped at the screen's edges while Windows' cursor, accelerated
+  by Windows, was somewhere else.
+- In the appliance the VM has the whole screen, so for VMs whose pointer is
+  `ps2` (DOS, Windows 3.x/9x profiles), a mouse agent in the session gives
+  every mouse to QEMU with `object-add input-linux`:
+  - A mouse is an event device with REL_X, REL_Y and BTN_LEFT.
+  - Mice plugged in later are added; unplugged ones are removed with
+    `object-del`.
+  - input-linux grabs the device (EVIOCGRAB) and sends its raw movement
+    to the guest's PS/2 mouse, so cage and SDL no longer see it. QEMU's
+    full-screen SDL window already hides the cursor.
+  - The `rehome` user is in the `input` group.
+- Touchpads (absolute devices) still go through cage and SDL. VMs with a
+  tablet (Windows XP and later, Linux) keep the absolute path, which works.
+- Tested: unit tests (mouse detection from sysfs, add/remove/no retry after
+  a failure). In the appliance (nested, emulated), the agent gave the outer
+  machine's PS/2 mouse ("ImExPS/2 Generic Explorer Mouse") to a FreeDOS VM
+  switched to a PS/2-only mouse, and moving that mouse through QMP moved
+  the cursor of a DOS program (`tests/fixtures/mousecom.asm`, Windows'
+  acceleration rule) from 320 to 345. The full appliance test
+  (`test_a_vm_with_only_a_ps2_mouse_gets_the_computers_mouse`, which also
+  drives the cursor to every edge) is still to pass at the time of this
+  commit.

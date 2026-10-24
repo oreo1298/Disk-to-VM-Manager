@@ -379,6 +379,8 @@ def session() -> int:
     if conf.get("kiosk", {}).get("usb_auto", True):
         agents.append(threading.Thread(target=usb_agent, args=(cfg, stop),
                                        kwargs={"attached": given}, daemon=True))
+    if relative_mouse_only(cfg):
+        agents.append(threading.Thread(target=mouse_agent, args=(cfg, stop), daemon=True))
     for a in agents:
         a.start()
     reason = ""
@@ -438,7 +440,7 @@ def outcome_for(reason: str) -> dict:
         # The guest turned itself off, or the appliance itself is shutting down.
         return {"outcome": "poweroff", "reason": reason}
     if reason == "guest-reset":
-        return {"outcome": "restart-vm", "reason": reason}       # QEMU ran with -no-reboot
+        return {"outcome": "restart-vm", "reason": reason}   # only with -no-reboot (direct boot)
     if reason == "guest-panic":
         return {"outcome": "error", "reason": reason,
                 "message": "The VM's operating system crashed."}
@@ -496,6 +498,76 @@ def _has_key(capfile: Path, code: int) -> bool:
     if idx >= len(words):
         return False
     return bool(int(words[-1 - idx], 16) >> bit & 1)
+
+
+# --- mice for VMs with a PS/2 mouse only -----------------------------------------------------
+
+# Linux input codes (linux/input-event-codes.h).
+REL_X, REL_Y, BTN_LEFT = 0x00, 0x01, 0x110
+
+
+def relative_mouse_only(cfg) -> bool:
+    """The VM's only pointing device is a PS/2 mouse (DOS, Windows 3.x/9x): it moves by
+    deltas and cannot follow an absolute pointer."""
+    return cfg.input.pointer == "ps2" and cfg.machine.type.startswith(("pc", "q35", "isapc"))
+
+
+def mice(sysclass: Path = Path("/sys/class/input")) -> dict[str, str]:
+    """The computer's mice (relative X and Y, a left button): event node -> sysfs device."""
+    out = {}
+    for ev in sorted(sysclass.glob("event*")):
+        caps = ev / "device" / "capabilities"
+        if (_has_key(caps / "rel", REL_X) and _has_key(caps / "rel", REL_Y)
+                and _has_key(caps / "key", BTN_LEFT)):
+            out[ev.name] = os.path.realpath(ev / "device")
+    return out
+
+
+def mouse_agent(cfg, stop: threading.Event, interval: float = 1.0,
+                sysclass: Path = Path("/sys/class/input"), devdir: str = "/dev/input") -> None:
+    """Hand the computer's mice straight to a VM that only has a PS/2 mouse.
+
+    Such a guest moves its cursor by the deltas QEMU's window sends. cage cannot
+    lock the pointer (it has no pointer-constraints protocol), so the hidden pointer
+    stopped at the screen's edges while the guest's cursor, accelerated by the guest,
+    was elsewhere: "invisible walls". QEMU's input-linux reads a mouse's own movement
+    from /dev/input and grabs it for the guest, so the guest gets every movement, like
+    a mouse plugged into an old PC. Mice plugged in later are added, unplugged ones
+    removed.
+    """
+    from rehome.vm import runner
+    given: dict[str, str] = {}                  # event node -> sysfs device
+    failed: set[tuple[str, str]] = set()
+    while not stop.is_set():
+        present = mice(sysclass)
+        gone = [n for n, d in given.items() if present.get(n) != d]
+        new = [(n, d) for n, d in present.items()
+               if given.get(n) != d and (n, d) not in failed]
+        if gone or new:
+            try:
+                with runner.qmp(cfg) as q:
+                    for name in gone:
+                        try:
+                            q.execute("object-del", {"id": f"mouse-{name}"})
+                        except RehomeError:
+                            pass
+                        given.pop(name, None)
+                        log.info("mouse %s removed from the VM", name)
+                    for name, dev in new:
+                        try:
+                            q.execute("object-add", {"qom-type": "input-linux",
+                                                     "id": f"mouse-{name}",
+                                                     "evdev": f"{devdir}/{name}"})
+                            given[name] = dev
+                            log.info("mouse %s (%s) given to the VM", name,
+                                     _read(Path(dev) / "name") or "?")
+                        except RehomeError as e:
+                            failed.add((name, dev))
+                            log.warning("mouse %s: %s %s", name, e.message, e.details or "")
+            except RehomeError as e:
+                log.debug("mouse agent: %s", e)
+        failed &= set(present.items())
+        stop.wait(interval)
 
 
 # --- USB ------------------------------------------------------------------------------------

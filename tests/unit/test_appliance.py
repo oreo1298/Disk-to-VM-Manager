@@ -438,7 +438,8 @@ def test_session_reads_the_shutdown_reason_when_qemu_exits_at_once(monkeypatch, 
     """
     import types
     from rehome.vm import qmp, runner
-    cfg = types.SimpleNamespace(name="WinXP", machine=types.SimpleNamespace(memory_mib=512, cpus=1),
+    cfg = types.SimpleNamespace(name="WinXP", input=types.SimpleNamespace(pointer="usb-tablet"),
+                                machine=types.SimpleNamespace(memory_mib=512, cpus=1),
                                 dir=Path("/nonexistent"))
     written = {}
 
@@ -474,3 +475,86 @@ def test_session_reads_the_shutdown_reason_when_qemu_exits_at_once(monkeypatch, 
     monkeypatch.setattr(qmp, "QMP", FakeQMP)
     assert runtime.session() == 0
     assert written["session.json"]["outcome"] == "poweroff"
+
+
+def _evdev(root, name, rel, key, label):
+    dev = root / "devices" / f"input-{name}"
+    (dev / "capabilities").mkdir(parents=True)
+    (dev / "capabilities" / "rel").write_text(rel + "\n")
+    (dev / "capabilities" / "key").write_text(key + "\n")
+    (dev / "name").write_text(label + "\n")
+    ev = root / "class" / name
+    ev.mkdir(parents=True)
+    (ev / "device").symlink_to(dev)
+    return ev
+
+
+def test_mice_are_found_by_their_capabilities(tmp_path):
+    from rehome.appliance import runtime as rt
+    _evdev(tmp_path, "event2", "143", "1f0000 0 0 0 0", "Logitech USB Optical Mouse")
+    _evdev(tmp_path, "event3", "0", "1f0000 0 0 0 0", "SynPS/2 Synaptics TouchPad")
+    _evdev(tmp_path, "event4", "0", "e080ffdf01cfffff fffffffffffffffe", "AT Keyboard")
+    _evdev(tmp_path, "event5", "3", "0", "Power Button")
+    found = rt.mice(tmp_path / "class")
+    assert list(found) == ["event2"]
+
+
+def test_mouse_agent_gives_mice_to_the_vm_and_takes_them_back(tmp_path, monkeypatch):
+    """Windows 98 in an appliance: cage cannot lock the pointer, so the mice go to QEMU
+    (input-linux), including ones plugged in later."""
+    import threading
+    import time
+    from rehome.appliance import runtime as rt
+    from rehome.vm import runner
+
+    calls = []
+
+    class FakeQMP:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def execute(self, cmd, args):
+            calls.append((cmd, args))
+            if args.get("id") == "mouse-event9":
+                raise RehomeError("Could not open '/dev/input/event9': Permission denied")
+    monkeypatch.setattr(runner, "qmp", lambda cfg, timeout=30.0: FakeQMP())
+    cls = tmp_path / "class"
+    _evdev(tmp_path, "event2", "143", "1f0000 0 0 0 0", "USB Mouse")
+    stop = threading.Event()
+    agent = threading.Thread(target=rt.mouse_agent, args=(None, stop),
+                             kwargs={"interval": 0.05, "sysclass": cls, "devdir": "/dev/input"})
+    agent.start()
+    try:
+        def wait_for(n):
+            deadline = time.monotonic() + 5
+            while len(calls) < n and time.monotonic() < deadline:
+                time.sleep(0.02)
+            time.sleep(0.2)
+        wait_for(1)
+        assert calls == [("object-add", {"qom-type": "input-linux", "id": "mouse-event2",
+                                         "evdev": "/dev/input/event2"})]
+        _evdev(tmp_path, "event7", "3", "70000 0 0 0 0", "Trackpoint")     # plugged in
+        _evdev(tmp_path, "event9", "3", "70000 0 0 0 0", "Locked mouse")
+        wait_for(3)
+        assert ("object-add", {"qom-type": "input-linux", "id": "mouse-event7",
+                               "evdev": "/dev/input/event7"}) in calls
+        assert sum(c[1].get("id") == "mouse-event9" for c in calls) == 1   # not retried
+        (cls / "event2" / "device").unlink()                              # unplugged
+        import shutil
+        shutil.rmtree(cls / "event2")
+        wait_for(4)
+        assert ("object-del", {"id": "mouse-event2"}) in calls
+    finally:
+        stop.set()
+        agent.join(5)
+
+
+def test_only_vms_with_a_ps2_mouse_get_the_mice():
+    from types import SimpleNamespace as NS
+    from rehome.appliance import runtime as rt
+    assert rt.relative_mouse_only(NS(input=NS(pointer="ps2"), machine=NS(type="pc")))
+    assert not rt.relative_mouse_only(NS(input=NS(pointer="usb-tablet"), machine=NS(type="pc")))
+    assert not rt.relative_mouse_only(NS(input=NS(pointer="ps2"), machine=NS(type="virt")))

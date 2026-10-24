@@ -229,6 +229,7 @@ def appliance(tmp_path_factory):
             g.mount("/dev/sda1", "/")
             g.write("/VBE.COM", VBE_COM)
             g.write("/POWEROFF.COM", POWEROFF_COM)
+            g.write("/MOUSE.COM", _mouse_com())
         disk = work / "disk.qcow2"
         disks.convert(str(img), str(disk), src_fmt="raw")
         cfg = create.create(create.NewVMSpec(name="FreeDOS Appliance", os="freedos1.3",
@@ -275,6 +276,15 @@ def test_image_layout(appliance):
     assert f"UUID={info['uuid3']}" in info["fstab"]
     assert info["efi"] and info["bios_core"] and info["wrapper"]
     assert cfg.id in info["conf"]
+
+
+def _mouse_com() -> bytes:
+    """tests/fixtures/mousecom.asm: shows where the PS/2 mouse moved a Windows-like cursor."""
+    src = Path(__file__).resolve().parents[1] / "fixtures" / "mousecom.asm"
+    out = subprocess.run(["nasm", "-f", "bin", "-o", "/dev/stdout", str(src)], check=True,
+                         capture_output=True).stdout
+    assert 100 < len(out) < 1000
+    return out
 
 
 def _boot_and_check(cfg, image: Path, work: Path, uefi: bool) -> Computer:
@@ -474,5 +484,93 @@ def test_boots_on_uefi(appliance, tmp_path):
         while pc.proc.poll() is None:
             assert time.monotonic() < deadline, open(tmp_path / "serial.log", errors="replace").read()[-3000:]
             time.sleep(3)
+    finally:
+        pc.stop()
+
+
+def test_a_vm_with_only_a_ps2_mouse_gets_the_computers_mouse(appliance, tmp_path):
+    """Regression: in a Windows 98 appliance the mouse hit "invisible walls". cage cannot
+    lock the pointer, so the hidden pointer stopped at the screen's edges while the
+    guest's own cursor was elsewhere. A VM with only a PS/2 mouse now gets the computer's
+    mice through QEMU's input-linux: every movement reaches the guest, at any position."""
+    cfg, out = appliance
+    image = tmp_path / "mouse.qcow2"
+    subprocess.run(["qemu-img", "create", "-f", "qcow2", "-b", str(out), "-F", "qcow2",
+                    str(image)], check=True, capture_output=True)
+    pc = _boot_and_check(cfg, image, tmp_path, uefi=False)
+    try:
+        sh = pc.serial
+        # The VM gets a PS/2 mouse only, like Windows 98: turned off with Rehome's tools
+        # (the maintenance console opens), then started again as its menu's "Start the VM"
+        # does (typing at it depends on whether it asks for the password first).
+        rc, n = sh.run("sed -i 's/^pointer = \"usb-tablet\"/pointer = \"ps2\"/' "
+                       "/var/lib/rehome/data/vms/*/vm.toml && "
+                       "grep -c '^pointer = \"ps2\"' /var/lib/rehome/data/vms/*/vm.toml")
+        assert rc == 0 and n.strip() == "1", n
+        rc, out = sh.run(f"rm -f /run/rehome/vm-started; rehome force-off {cfg.id}")
+        assert rc == 0, out
+        deadline = time.monotonic() + 180 * SLOW
+        while True:
+            _, st = sh.run("systemctl is-active rehome-maintenance")
+            if st.strip() == "active":
+                break
+            assert time.monotonic() < deadline, st
+            time.sleep(5)
+        rc, out = sh.run("rm -f /run/rehome/console-message; "
+                         "systemctl --no-block start rehome-kiosk.service")
+        assert rc == 0, out
+        deadline = time.monotonic() + 600 * SLOW
+        while True:
+            _, mice = sh.run("journalctl -b --no-pager | grep 'mouse event.* given to the VM' "
+                             "|| true")
+            if "mouse event" in mice:
+                break
+            assert time.monotonic() < deadline, sh.run("journalctl -b --no-pager | tail -40")[1]
+            time.sleep(10)
+        deadline = time.monotonic() + 600 * SLOW
+        while True:
+            _, text = sh.run(f"rehome screen-text {cfg.id}")
+            if freedos.MARKER in text:
+                break
+            assert time.monotonic() < deadline, text
+            time.sleep(10)
+        sh.run(f"rehome type {cfg.id} mouse && rehome send-keys {cfg.id} ret")
+
+        def where():
+            deadline = time.monotonic() + 120 * SLOW
+            last = None
+            while True:                       # until it stops changing
+                time.sleep(5 * SLOW)
+                _, text = sh.run(f"rehome screen-text {cfg.id}")
+                m = re.search(r"MOUSE X=(\d+) Y=(\d+) N=(\d+)", text)
+                now = tuple(int(v) for v in m.groups()) if m else None
+                if now and now == last:
+                    return now
+                assert time.monotonic() < deadline, text
+                last = now
+
+        def move(dx, dy, times):              # the computer's own PS/2 mouse
+            for _ in range(times):
+                pc.qmp("input-send-event", {"events": [
+                    {"type": "rel", "data": {"axis": "x", "value": dx}},
+                    {"type": "rel", "data": {"axis": "y", "value": dy}}]})
+                time.sleep(0.05)
+        x, y, n = where()
+        assert (x, y) == (320, 240), (x, y)       # n may count an empty packet already
+        def kernel():                         # the appliance's PS/2 driver, for failures
+            return sh.run("journalctl -k -b --no-pager | grep -i psmouse | tail -5")[1]
+        move(5, 0, 20)
+        x, y, n2 = where()
+        # Nested emulation is slow enough for the appliance's PS/2 driver to drop some
+        # packets ("lost synchronization"); on a real computer the mouse is real.
+        assert n2 > n and x > 320 and y == 240, (x, y, n2, kernel())
+        # No wall anywhere: big moves reach every edge.
+        move(40, 0, 60)
+        assert where()[:2] == (639, 240), kernel()
+        move(-40, 30, 60)
+        assert where()[:2] == (0, 479), kernel()
+        move(25, -40, 60)
+        x, y, _ = where()
+        assert y == 0 and x > 300, (x, y, kernel())
     finally:
         pc.stop()

@@ -94,6 +94,14 @@ resolution; older ones (XP, 98) keep the resolution set inside them and are
 scaled to fit, with black bars when the shape differs (a 4:3 desktop on a
 16:9 laptop). The pointer reaches the whole picture either way.
 
+DOS and Windows 9x VMs have only a PS/2 mouse, which moves the guest's own
+cursor by small steps. The appliance hands the computer's mice straight to
+such a VM, including mice plugged in later. It moves exactly like a mouse
+on an old PC, with no invisible edges. A laptop's touchpad still goes
+through the VM's window. In a VM with only a PS/2 mouse, that window
+cannot keep the pointer from stopping at the screen's edges, so use a
+mouse.
+
 If the picture is garbled or the screen stays black with a particular
 graphics card, press Esc while the computer starts, select the **Start**
 entry, press `e`, add `rehome.gl=off` to the line that starts with `linux`,
@@ -195,5 +203,6 @@ compositor) showing QEMU's own window. It is a normal Rehome VM: the same
   screen reachable by the pointer; the Windows 11 VM had no network and a
   Windows XP VM stopped after reaching its desktop, both addressed in
   0.3.1 ([DECISIONS.md](DECISIONS.md) D32) but not yet re-checked on that
-  laptop. DOS and Windows 9x guests with a PS/2 mouse rely on SDL's mouse
-  capture, which is untested in the kiosk.
+  laptop. A VM with only a PS/2 mouse (DOS, Windows 9x) gets the
+  computer's mice directly (D41), tested with the appliance's own PS/2
+  mouse moving a cursor in FreeDOS.

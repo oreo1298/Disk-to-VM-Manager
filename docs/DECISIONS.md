@@ -1369,10 +1369,12 @@ Reported after D41: in a Windows 98 appliance on a laptop, the touchpad still
     one per batch, wheel clicks) and the agent against a scripted
     libinput.
   - The ctypes calls against libinput 1.25.
-  - `test_a_vm_with_only_a_ps2_mouse_gets_the_computers_mouse` (run
-    pending at this commit): the emulated appliance has no touchpad, so the
+  - `test_a_vm_with_only_a_ps2_mouse_gets_the_computers_mouse` (passed,
+    42 min without KVM): the emulated appliance has no touchpad, so the
     test makes one with uinput (`tests/fixtures/uinput_touchpad.py`, real
     multi-touch events). Through the appliance's libinput 1.31 and the
-    agent, its swipes must move a DOS program's Windows-like cursor
-    (`tests/fixtures/mousecom.asm`) to every edge of the screen. A tap must
-    count as a left click, and a two-finger tap as a right click.
+    agent, its swipes moved a DOS program's Windows-like cursor
+    (`tests/fixtures/mousecom.asm`) to every edge of the screen. A tap
+    counted as a left click, and a two-finger tap as a right click.
+  - Not tested: a real laptop's touchpad, and the speed it gives in
+    Windows 98.

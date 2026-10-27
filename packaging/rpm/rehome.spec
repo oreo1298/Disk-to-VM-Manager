@@ -11,7 +11,7 @@
 %global __brp_python_bytecompile %{nil}
 
 Name:           rehome
-Version:        0.3.19
+Version:        0.3.20
 Release:        1%{?dist}
 Summary:        Turn installed operating systems into QEMU/KVM virtual machines
 # LGPL: data/firmware (SeaBIOS's VGA BIOS)
@@ -143,6 +143,11 @@ python3 packaging/layout.py install \
 %{_datadir}/icons/hicolor/symbolic/apps/io.github.oreo1298.Rehome-symbolic.svg
 
 %changelog
+* Tue Oct 27 2026 Rehome contributors - 0.3.20-1
+- Windows 95/98/ME: the VGA BIOS runs every call on the caller's stack, without its
+  own stack in upper memory, which Windows maps for each of its virtual machines.
+  Windows 98 hung at a black screen with a blinking cursor when it shut down.
+
 * Tue Oct 27 2026 Rehome contributors - 0.3.19-1
 - Appliances: a laptop's touchpad drives DOS and Windows 9x VMs directly, with tap to
   click and two-finger scrolling, instead of stopping at the screen's edges. Its speed

@@ -34,6 +34,11 @@
     <control>pointing</control>
   </supports>
   <releases>
+    <release version="0.3.20" date="2026-10-27">
+      <description>
+        <p>Windows 95/98/ME: the VGA BIOS no longer uses a stack of its own in upper memory, which Windows maps for each of its virtual machines. Windows 98 hung at a black screen with a blinking cursor when it shut down.</p>
+      </description>
+    </release>
     <release version="0.3.19" date="2026-10-27">
       <description>
         <p>Appliances: a laptop's touchpad drives DOS and Windows 9x VMs directly, with tap to click and two-finger scrolling, instead of stopping at the screen's edges. Diagnostics of a running VM include the BIOS's video state, the code the processor runs and its stack.</p>

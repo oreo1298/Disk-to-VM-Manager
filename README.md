@@ -16,7 +16,7 @@ Rehome is a Linux desktop app for QEMU/KVM. It does two jobs:
 
 Everything the GUI does is also available on the command line (`rehome --help`).
 
-> **Status: 0.3.19, early release.** The engine, CLI and GUI work, and they are
+> **Status: 0.3.20, early release.** The engine, CLI and GUI work, and they are
 > tested on synthetic disks and on real FreeDOS, ReactOS and Ubuntu guests. Real
 > Windows and 9x installations were not tested yet; see
 > [What has been tested](#what-has-been-tested).
@@ -208,8 +208,8 @@ chosen per operating system from profiles in `data/profiles/`:
     drivers (patcher9x's fix), which can crash them even under emulation.
   - Gives Windows 9x VMs its own build of QEMU's VGA BIOS: QEMU's crashed
     Windows 98 when it shut down ("A fatal exception 0D has occurred at
-    C000:00002007"), then hung at a black screen. It is SeaBIOS's, without
-    debug output and with one small change
+    C000:00002007"), then hung at a black screen. It is SeaBIOS's, unchanged,
+    built without debug output and without its extra stack
     ([data/firmware](data/firmware/README.md)).
   - Turns Windows 9x VMs off once Windows has finished shutting down.
     Windows 9x turns the computer off only through its APM driver, which

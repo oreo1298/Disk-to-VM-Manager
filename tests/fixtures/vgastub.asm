@@ -14,9 +14,10 @@
 ; stack for callers with small stacks, three times: after setting text mode 3 the
 ; old way (INT 10h AX=0003h), as DOS does; after a VESA mode set (AX=4F02h), as
 ; Windows' display driver does; and after text mode 3 the old way again, as
-; Windows does when it shuts down. SeaVGABIOS turns the stack back on then, while
-; Windows' virtual machines share it, and Windows 98 hung at a black screen.
-; Rehome's VGA BIOS keeps it off until the next boot: "XS=100" (QEMU's: "101").
+; Windows does when it shuts down. SeaVGABIOS turns the stack back on then (it
+; turns it off only for mode sets outside V86 mode, so never under Windows 9x),
+; and Windows 98 hung at a black screen. Rehome's VGA BIOS has no extra stack:
+; "XS=000" (QEMU's: "101").
 ;
 ; Then it turns the VGA BIOS's extra stack off (as a mode set by Windows does), and
 ; calls INT 10h AX=1200h BL=36h ("video refresh control", a stub in SeaVGABIOS)

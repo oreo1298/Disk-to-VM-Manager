@@ -4,15 +4,17 @@
 QEMU's VGA BIOS, SeaVGABIOS, prints a debug note for video functions it does not
 implement. Windows 95/98 calls one when it shuts down, on a stack with little
 room left, and the note's digits are stored past the end of the 64 KB stack
-segment: "A fatal exception 0D has occurred at C000:00002007" (D43). And an
-old-style mode set (as at shutdown) turns SeaVGABIOS's own small "extra stack"
-back on while Windows' virtual machines share it: Windows 98 then hung at a
-black screen (D44). These are the SeaVGABIOS release Ubuntu 26.04 ships, built
-with QEMU's own configuration for each device, without the debug output
-(CONFIG_DEBUG_LEVEL=0), and with data/firmware/seavgabios-extra-stack.patch:
-the extra stack is on from the start (for DOS and its small stacks) until an
-OS sets a mode its own way, and then stays off until the next boot. Rehome
-gives them to Windows 9x VMs (rehome/vm/qemu_cmd.py, vga_bios()).
+segment: "A fatal exception 0D has occurred at C000:00002007" (D43). It also runs
+on an "extra stack" of its own in the BIOS's upper memory (the E segment), which
+upstream turns off only for a modern OS's mode sets outside V86 mode, so never
+under Windows 9x. Windows 9x maps that memory per virtual machine and switches
+between machines, and Windows 98 hung at a black screen when it shut down, running
+through overwritten VGA BIOS code (D44, D47). These are the SeaVGABIOS release
+Ubuntu 26.04 ships, built with QEMU's own configuration for each device, without
+the debug output (CONFIG_DEBUG_LEVEL=0) and without the extra stack
+(CONFIG_VGA_ALLOCATE_EXTRA_STACK=n), as SeaVGABIOS was before 2013: every call
+runs on its caller's stack. Rehome gives them to Windows 9x VMs
+(rehome/vm/qemu_cmd.py, vga_bios()).
 
     git clone --branch rel-1.17.0 https://github.com/coreboot/seabios
     scripts/build_vgabios.py seabios
@@ -29,14 +31,13 @@ from pathlib import Path
 
 TAG = "rel-1.17.0"
 OUT = Path(__file__).resolve().parent.parent / "data" / "firmware"
-PATCH = OUT / "seavgabios-extra-stack.patch"
 # QEMU's roms/config.vga-* for each file, plus no debug output.
 VARIANTS = {
     "vgabios-cirrus.bin": ["CONFIG_VGA_CIRRUS=y"],
     "vgabios-stdvga.bin": ["CONFIG_VGA_BOCHS=y"],
 }
 COMMON = ["CONFIG_BUILD_VGABIOS=y", "CONFIG_VGA_PCI=y", "CONFIG_DEBUG_LEVEL=0",
-          "CONFIG_VGA_ALLOCATE_EXTRA_STACK=y"]
+          "# CONFIG_VGA_ALLOCATE_EXTRA_STACK is not set"]
 
 
 def run(argv: list[str], src: Path) -> str:
@@ -50,11 +51,7 @@ def main() -> None:
     tag = run(["git", "describe", "--tags", "--exact-match"], src).strip()
     if tag != TAG or run(["git", "status", "--porcelain"], src).strip():
         sys.exit(f"{src} must be an unmodified checkout of {TAG} (it is {tag or 'not tagged'})")
-    run(["git", "apply", str(PATCH)], src)
-    try:
-        build(src)
-    finally:
-        run(["git", "checkout", "--", "."], src)
+    build(src)
 
 
 def build(src: Path) -> None:

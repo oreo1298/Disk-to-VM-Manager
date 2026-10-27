@@ -1,4 +1,4 @@
-"""Rehome's VGA BIOS for Windows 9x VMs (data/firmware, D43), against a boot sector
+"""Rehome's VGA BIOS for Windows 9x VMs (data/firmware, D43, D47), against a boot sector
 that calls an unimplemented video function the way Windows 98 does when it shuts
 down (tests/fixtures/vgastub.asm)."""
 
@@ -64,8 +64,8 @@ def test_rehomes_vga_bios_stays_on_the_callers_stack(stub_disk, tmp_path, device
     if not rom.is_file():
         pytest.skip(f"{rom} is not built (scripts/build_vgabios.py)")
     assert b"stub %s:%d" not in rom.read_bytes()
-    # The extra stack: on for DOS, off once an OS sets a mode its way, and off for good.
-    assert run_stub(stub_disk, device, rom, tmp_path) == (0, 0x12, "100")
+    # No extra stack at any time (D47): every call stays on the caller's stack.
+    assert run_stub(stub_disk, device, rom, tmp_path) == (0, 0x12, "000")
 
 
 @pytest.mark.parametrize("device, name", [("cirrus-vga", "vgabios-cirrus.bin"),
@@ -107,7 +107,7 @@ def test_a_windows_98_vm_starts_with_rehomes_vga_bios(stub_disk, tmp_path):
             runner.force_off(cfg)
     m = re.search(r"VGASTUB OUT=(\d+) AL=([0-9A-F]{2}) XS=([01]{3})",
                   (cfg.dir / "logs" / "serial.log").read_text(errors="replace"))
-    assert m and (int(m.group(1)), m.group(2), m.group(3)) == (0, "12", "100")
+    assert m and (int(m.group(1)), m.group(2), m.group(3)) == (0, "12", "000")
     assert f"romfile={rom}" in (cfg.dir / "logs" / "qemu.log").read_text()
     log = (cfg.dir / "logs" / "watch.log").read_text()
     assert re.search(r"real mode at 0000:00007[0-9A-F]{3}, halted, interrupts off", log), log

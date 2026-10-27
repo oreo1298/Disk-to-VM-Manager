@@ -1378,3 +1378,59 @@ Reported after D41: in a Windows 98 appliance on a laptop, the touchpad still
     counted as a left click, and a two-finger tap as a right click.
   - Not tested: a real laptop's touchpad, and the speed it gives in
     Windows 98.
+
+## D47. Windows 9x VMs: a VGA BIOS without its extra stack
+
+The diagnostics of D45 (0.3.19), taken at the reporter's black shutdown
+screen, showed what had gone wrong:
+
+- The code at CS:EIP (C000:0F90) was `20 07 20 07 ...`: blank text cells
+  (a space in grey on black). The VGA BIOS's code had been overwritten.
+  - The processor ran through those cells as instructions (`and [bx],al`)
+    and wrapped around the segment forever, in V86 mode with interrupts
+    off.
+  - 0.3.15's "teletype and scroll" addresses (D44) were the same thing,
+    read as code that was no longer there.
+- The registers were the same as in 0.3.15's report, except ESP and EIP.
+  - SS=DS=ED6C, EBP=01C8: SeaVGABIOS's extra stack in the E segment.
+  - EDI=8000: the end of a 32 KB text clear.
+  - CR2=BF000: the last page of text memory.
+- The BIOS's video variables said mode 13h, Windows' boot logo. At shutdown,
+  Windows uses the BIOS data area as it was when Windows started, and in
+  that copy the extra stack's flag (BDA 40:B9) is on. That defeats 0.3.17's
+  patch, which only kept the flag off in the copy where Windows' display
+  driver had set a mode.
+- SeaBIOS's history says the same:
+  - The extra stack (2013) is "for old DOS programs that call the VGABIOS
+    and expect it to work with very small amounts of stack space".
+  - A 2015 commit turns it off after a VBE mode set made outside V86 mode,
+    as "an ugly hack to work around a problem Windows Vista (and possibly
+    later Windows releases) has with the VGA BIOS using a stack in the
+    e-segment".
+  - Windows 9x makes all its mode sets in V86 mode, so QEMU's own VGA BIOS
+    never turns the stack off for it. Windows 9x maps upper memory for each
+    virtual machine and switches between machines, so one shared stack
+    there cannot be safe.
+- 0.3.20 builds the Windows 9x ROMs without the extra stack
+  (`CONFIG_VGA_ALLOCATE_EXTRA_STACK` off, unchanged source; the patch is
+  gone). Every call runs on its caller's stack, as SeaVGABIOS did before
+  2013, and as each of Windows' virtual machines has its own.
+  - The entry code zero-extends SP and turns interrupts off, so a caller's
+    32-bit ESP does not matter.
+  - Left: a DOS program calling INT 10h with almost no stack left could
+    fault under KVM, which checks real-mode segment limits. That is the
+    case the extra stack was for, and no such program is known in Windows
+    98's use.
+- 0.3.16 was the same idea. It looked worse at the time only because of
+  the "Advanced Power Management support" device, which hung the boot
+  (D44).
+- Tested (TCG; this build environment has no KVM):
+  - `tests/fixtures/vgastub.asm`: no extra stack after any mode set
+    ("000"), nothing written outside the caller's stack, cirrus and
+    standard VGA.
+  - A Windows 98-profile VM gets the ROM and is turned off by D45's
+    watcher.
+  - FreeDOS with the Windows 98 profile boots, switches to VESA mode 117h
+    and back, and prints and scrolls a full screen of `dir` output with no
+    character missing.
+  - Windows 98 itself: to be confirmed on the reporter's VM.

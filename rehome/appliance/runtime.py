@@ -400,6 +400,13 @@ def kiosk() -> int:
     # guest's addresses when it starts (link-local ones without a connection), while
     # slirp gives the guest a fixed private network and follows the host's connection.
     env["REHOME_NO_PASST"] = "1"
+    if relative_mouse_only(cfg):
+        # Every mouse and touchpad goes straight to the VM, which draws its own cursor,
+        # so cage's pointer never moves onto QEMU's window, where it would be hidden:
+        # it stayed in the middle of the screen. wlroots (and SDL) read cursors from
+        # XCURSOR_PATH: a theme whose cursors are invisible (D46).
+        env["XCURSOR_PATH"] = str(hidden_cursor_theme(
+            Path(env.get("XDG_RUNTIME_DIR") or "/tmp") / "rehome-cursors"))
     if not gpu:
         # No GPU acceleration (basic graphics, or a display without a render node):
         # wlroots refuses software OpenGL, so it uses its CPU renderer directly, and
@@ -620,6 +627,24 @@ def relative_mouse_only(cfg) -> bool:
     """The VM's only pointing device is a PS/2 mouse (DOS, Windows 3.x/9x): it moves by
     deltas and cannot follow an absolute pointer."""
     return cfg.input.pointer == "ps2" and cfg.machine.type.startswith(("pc", "q35", "isapc"))
+
+
+def hidden_cursor_theme(base: Path) -> Path:
+    """``base`` for XCURSOR_PATH: a theme named "default" (the one cage's wlroots and SDL
+    load) whose "default" and "left_ptr" cursors are one transparent pixel."""
+    import struct
+    image = struct.pack("<9I", 36, XCURSOR_IMAGE, 24, 1, 1, 1, 0, 0, 0) + bytes(4)
+    data = (struct.pack("<4I", XCURSOR_MAGIC, 16, 0x10000, 1)
+            + struct.pack("<3I", XCURSOR_IMAGE, 24, 28) + image)
+    cursors = base / "default" / "cursors"
+    cursors.mkdir(parents=True, exist_ok=True)
+    for name in ("default", "left_ptr"):
+        (cursors / name).write_bytes(data)
+    return base
+
+
+# Xcursor files: "Xcur" and the image chunk type (libXcursor's Xcursor.h).
+XCURSOR_MAGIC, XCURSOR_IMAGE = 0x72756358, 0xFFFD0002
 
 
 def mice(sysclass: Path = Path("/sys/class/input")) -> dict[str, str]:

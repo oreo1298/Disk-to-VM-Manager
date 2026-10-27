@@ -1378,6 +1378,21 @@ Reported after D41: in a Windows 98 appliance on a laptop, the touchpad still
     counted as a left click, and a two-finger tap as a right click.
   - Not tested: a real laptop's touchpad, and the speed it gives in
     Windows 98.
+- Reported on 0.3.19: the touchpad works, but a cursor stays in the middle
+  of the screen.
+  - It is cage's pointer. cage puts it in the middle at the start. Before,
+    the first touch moved it onto QEMU's window, which hides it.
+  - Now every mouse and touchpad goes to the VM, so nothing moves it.
+  - 0.3.21: for VMs with only a PS/2 mouse, the kiosk sets `XCURSOR_PATH`
+    to a generated cursor theme named "default" (the one cage's wlroots
+    loads; cage reads no `XCURSOR_THEME`). Its "default" and "left_ptr"
+    cursors are one transparent pixel. QEMU's SDL window gets the same
+    environment.
+  - The guest draws its own cursor. VMs with a tablet keep the visible
+    pointer.
+  - Tested: a unit test reads the cursor files as libXcursor does. The
+    appliance test checks cage's environment and that a screenshot shows
+    no cursor in the middle of the screen (run pending at this commit).
 
 ## D47. Windows 9x VMs: a VGA BIOS without its extra stack
 

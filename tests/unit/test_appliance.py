@@ -324,10 +324,15 @@ def test_crash_message_names_qemus_error_and_the_usb_devices():
     assert "Its last message" not in runtime.crash_message("", [])
 
 
-def test_kiosk_uses_qemus_own_nat(monkeypatch):
-    """The VM starts before Wi-Fi is up: passt would hand the guest link-local addresses."""
+def test_kiosk_uses_qemus_own_nat(monkeypatch, tmp_path):
+    """The VM starts before Wi-Fi is up: passt would hand the guest link-local addresses.
+    A VM with only a PS/2 mouse gets every mouse and touchpad, so cage's pointer, which
+    never moves, is made invisible (D46)."""
     import types
-    cfg = types.SimpleNamespace(name="Old PC", machine=types.SimpleNamespace(memory_mib=512, cpus=1))
+    cfg = types.SimpleNamespace(name="Old PC", input=types.SimpleNamespace(pointer="usb-tablet"),
+                                machine=types.SimpleNamespace(memory_mib=512, cpus=1, type="pc"))
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path))
+    monkeypatch.delenv("XCURSOR_PATH", raising=False)
     seen = {}
     monkeypatch.setattr(runtime, "load_config", lambda: {"kiosk": {"countdown": 0}})
     monkeypatch.setattr(runtime, "the_vm", lambda: cfg)
@@ -349,6 +354,31 @@ def test_kiosk_uses_qemus_own_nat(monkeypatch):
     monkeypatch.setattr(runtime.subprocess, "run", run)
     assert runtime.kiosk() == 0
     assert seen["env"]["REHOME_NO_PASST"] == "1"
+    assert "XCURSOR_PATH" not in seen["env"]           # a tablet moves cage's pointer
+    cfg.input.pointer = "ps2"
+    assert runtime.kiosk() == 0
+    assert seen["env"]["XCURSOR_PATH"] == str(tmp_path / "rehome-cursors")
+    for name in ("default", "left_ptr"):
+        assert _xcursor_pixels(tmp_path / "rehome-cursors" / "default" / "cursors" / name) \
+            == [(1, 1, 0)]
+
+
+def _xcursor_pixels(path: Path) -> list[tuple[int, int, int]]:
+    """(width, height, the ARGB values ORed) of each image in an Xcursor file, read as
+    libXcursor and wlroots read it."""
+    import struct
+    data = path.read_bytes()
+    magic, header, version, ntoc = struct.unpack_from("<4I", data)
+    assert (magic, header, version) == (runtime.XCURSOR_MAGIC, 16, 0x10000)
+    out = []
+    for i in range(ntoc):
+        kind, _size, pos = struct.unpack_from("<3I", data, header + 12 * i)
+        assert kind == runtime.XCURSOR_IMAGE
+        size, kind2, _nominal, _ver, w, h, xhot, yhot, _delay = struct.unpack_from("<9I", data, pos)
+        assert (size, kind2) == (36, kind) and xhot <= w and yhot <= h
+        pixels = struct.unpack_from(f"<{w * h}I", data, pos + size)
+        out.append((w, h, max(pixels) | min(pixels)))
+    return out
 
 
 def _zoneinfo(tmp_path: Path) -> Path:
@@ -408,7 +438,8 @@ def test_build_checks_the_timezone(monkeypatch):
 def test_kiosk_says_what_happens_next(monkeypatch):
     """The text screen must not keep showing "Starting ..." while the computer turns off."""
     import types
-    cfg = types.SimpleNamespace(name="Old PC", machine=types.SimpleNamespace(memory_mib=512, cpus=1))
+    cfg = types.SimpleNamespace(name="Old PC", input=types.SimpleNamespace(pointer="usb-tablet"),
+                                machine=types.SimpleNamespace(memory_mib=512, cpus=1, type="pc"))
     said = []
     results = iter([{"outcome": "restart-vm"}, {"outcome": "poweroff"}])
     monkeypatch.setattr(runtime, "load_config", lambda: {"kiosk": {"countdown": 0}})

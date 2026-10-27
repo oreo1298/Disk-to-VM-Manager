@@ -34,6 +34,11 @@
     <control>pointing</control>
   </supports>
   <releases>
+    <release version="0.3.21" date="2026-10-27">
+      <description>
+        <p>Appliances with a DOS or Windows 9x VM no longer show a second cursor stuck in the middle of the screen.</p>
+      </description>
+    </release>
     <release version="0.3.20" date="2026-10-27">
       <description>
         <p>Windows 95/98/ME: the VGA BIOS no longer uses a stack of its own in upper memory, which Windows maps for each of its virtual machines. Windows 98 hung at a black screen with a blinking cursor when it shut down.</p>

@@ -517,7 +517,18 @@ def test_a_vm_with_only_a_ps2_mouse_gets_the_computers_mouse(appliance, tmp_path
     subprocess.run(["qemu-img", "create", "-f", "qcow2", "-b", str(out), "-F", "qcow2",
                     str(image)], check=True, capture_output=True)
     pc = _boot_and_check(cfg, image, tmp_path, uefi=False)
+
+    def pointer_pixels(name):
+        """Bright pixels where cage puts its pointer at first: the middle of the screen."""
+        from PIL import Image
+        png = tmp_path / f"{name}.png"
+        pc.qmp("screendump", {"filename": str(png), "format": "png"})
+        im = Image.open(png).convert("RGB")
+        cx, cy = im.size[0] // 2, im.size[1] // 2
+        return [(x, y) for x in range(cx - 8, cx + 32) for y in range(cy - 8, cy + 40)
+                if min(im.getpixel((x, y))) >= 0xE0]
     try:
+        before = len(pointer_pixels("pointer-tablet"))      # for comparison: not checked
         sh = pc.serial
         # The VM gets a PS/2 mouse only, like Windows 98: turned off with Rehome's tools
         # (the maintenance console opens), then started again as its menu's "Start the VM"
@@ -591,6 +602,17 @@ def test_a_vm_with_only_a_ps2_mouse_gets_the_computers_mouse(appliance, tmp_path
         move(25, -40, 60)
         x, y, *_ = where()
         assert y == 0 and x > 300, (x, y, kernel())
+
+        # cage's pointer: nothing moves it (every mouse and touchpad goes to the VM; the
+        # outer machine's tablet stays still), so it must be invisible, not a cursor stuck
+        # in the middle of the screen. wlroots draws it into the picture on this VGA.
+        _, env = sh.run("tr '\\0' '\\n' < /proc/$(pidof cage)/environ | grep ^XCURSOR_PATH= "
+                        "|| true")
+        assert "rehome-cursors" in env, env
+        bright = pointer_pixels("pointer-ps2")
+        print(f"cage's pointer: {before} bright pixels at the middle with a tablet VM, "
+              f"{len(bright)} with a PS/2 mouse")
+        assert not bright, bright[:10]
 
         # A touchpad: uinput makes one (the outer machine has none), with real multi-touch
         # events, so libinput handles it as a laptop's.

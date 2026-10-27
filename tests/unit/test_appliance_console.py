@@ -13,7 +13,8 @@ from rehome.util import toml
 
 def _kiosk(monkeypatch, results, settings=None, keys=None, conf=None):
     """Run kiosk() with ``results`` as the sessions' outcomes; returns (said, intent)."""
-    cfg = types.SimpleNamespace(name="Old PC", machine=types.SimpleNamespace(memory_mib=512, cpus=1))
+    cfg = types.SimpleNamespace(name="Old PC", input=types.SimpleNamespace(pointer="usb-tablet"),
+                                machine=types.SimpleNamespace(memory_mib=512, cpus=1, type="pc"))
     said, intent, waits = [], {}, []
     results = iter(results)
     keys = iter(keys or [])

@@ -16,7 +16,7 @@ Rehome is a Linux desktop app for QEMU/KVM. It does two jobs:
 
 Everything the GUI does is also available on the command line (`rehome --help`).
 
-> **Status: 0.3.17, early release.** The engine, CLI and GUI work, and they are
+> **Status: 0.3.18, early release.** The engine, CLI and GUI work, and they are
 > tested on synthetic disks and on real FreeDOS, ReactOS and Ubuntu guests. Real
 > Windows and 9x installations were not tested yet; see
 > [What has been tested](#what-has-been-tested).
@@ -211,6 +211,12 @@ chosen per operating system from profiles in `data/profiles/`:
     C000:00002007"), then hung at a black screen. It is SeaBIOS's, without
     debug output and with one small change
     ([data/firmware](data/firmware/README.md)).
+  - Turns Windows 9x VMs off once Windows has finished shutting down.
+    Windows 9x turns the computer off only through its APM driver, which
+    is often not installed (and which can hang it in a VM). Without it, it
+    stops at "It's now safe to turn off your computer". Rehome watches the
+    VM's processor and turns the VM off a few seconds after Windows has
+    stopped it for good.
 - **BSD**: chooses suitable hardware and reports what was found.
 
 Rehome warns about two cases and decides nothing for you:
@@ -393,6 +399,7 @@ scripts. Add `-v` to any command for technical details.
 | Old Windows (9x/2000/XP) runs too fast, hangs or crashes on start | Use the profile's defaults: emulation (TCG) for 9x, at most 512 MB of RAM, a Pentium-class CPU model. |
 | The console stays black | The guest may have switched its display off. Press a key in the console, or check **Logs**. `rehome screenshot VM x.png` shows what QEMU itself sees. |
 | Windows 95/98: "While initializing device NDIS: Windows protection error" | The CPU is too fast for a timing loop in NDIS.VXD, even under emulation on a fast computer. Update Rehome, turn the VM off and run `rehome patch run VM --only win9x.cpu_speed`. Rebuild an appliance afterwards: it carries a copy of the disk. |
+| Windows 95/98 stays at "It's now safe to turn off your computer" | Rehome 0.3.18 and later turn the VM off a few seconds after that screen appears. If it stays on, send `rehome diagnostics VM` from that screen: it shows where the processor stopped (and the VM's `watch.log`). Adding "Advanced Power Management support" in Windows is not needed, and it can hang Windows 98 while it boots. |
 | The mouse cursor does not move in DOS or Windows 9x (Rehome 0.3.8 and older) | Update Rehome. Older versions treated a PS/2 mouse as absolute, so the cursor never moved. |
 | The mouse is captured in DOS or Windows 9x | These systems only have a relative PS/2 mouse. Click in the console to capture it: the guest cursor jumps to where you clicked. It lines up again whenever you reach an edge of the screen. Press Ctrl+Alt to release it. GTK 4 cannot hold the hidden pointer inside the window, so if the cursors drift apart, move to an edge. |
 | No network in the VM | NAT uses `passt` when it is installed, otherwise QEMU's built-in NAT. For a bridge, see **Settings → Network** (needs `qemu-bridge-helper` set up by your distribution). |

@@ -42,6 +42,10 @@ class RuntimePaths:
         return str(self.run / "qmp-ui.sock")
 
     @property
+    def qmp_watch(self) -> str:
+        return str(self.run / "qmp-watch.sock")
+
+    @property
     def pidfile(self) -> str:
         return str(self.run / "qemu.pid")
 
@@ -301,7 +305,15 @@ class Builder:
     # --- control and console --------------------------------------------------
 
     def _monitors(self) -> None:
-        for i, path in enumerate((self.rt.qmp, self.rt.qmp_ui)):
+        paths = [self.rt.qmp, self.rt.qmp_ui]
+        if self.cfg.os.family == "win9x" and self.pc_like:
+            # Turns the VM off once Windows has finished shutting down (rehome/vm/watch.py).
+            from rehome.vm import watch
+            paths.append(self.rt.qmp_watch)
+            log = (self.opts.log_dir or self.rt.run) / "watch.log"
+            self.sidecars.append(Sidecar("watch", watch.sidecar_argv(
+                self.cfg.id, self.rt.qmp_watch, str(log)), log=str(log)))
+        for i, path in enumerate(paths):
             self.a("-chardev", f"socket,id=qmp{i},path={path},server=on,wait=off")
             self.a("-mon", f"chardev=qmp{i},mode=control")
         serial_log = ""

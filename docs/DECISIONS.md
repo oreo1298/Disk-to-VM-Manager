@@ -1251,3 +1251,58 @@ the VM stays on.
   SeaBIOS's APM power-off writes the same ACPI register as `POWEROFF.COM`,
   which QEMU turns into a power-off. The device can be added in Windows
   (Add New Hardware → System devices).
+
+## D45. Windows 9x VMs: turned off once Windows has finished shutting down
+
+Reported after D44: with "Advanced Power Management support" removed again,
+the reporter's Windows 98 boots normally, but shutting down ends at "It's
+now safe to turn off your computer" and the VM stays on.
+
+- Windows 95/98/ME turn the computer off only through their APM driver.
+  - Without it they leave the processor stopped and show that screen.
+  - With it, the reporter's Windows 98 hung while booting under KVM (D44).
+  - So Rehome cannot count on it.
+- 0.3.18 watches the processor instead (`rehome/vm/watch.py`).
+  - A small helper process starts with every Windows 9x VM on a pc or
+    q35 machine (a runner "sidecar", like swtpm). It has its own QMP
+    socket.
+  - Every 2 seconds it asks QEMU whether the VM runs and, if so, where
+    the processor is (`info registers`).
+  - "Stopped for good" means three samples in a row in real mode with
+    interrupts off, and either halted or on the same instruction. Only
+    a reset can change that.
+  - Then it writes SLP_EN to PM1a_CNT (`o /w 0x604 0x2000`), which is
+    what SeaBIOS's APM power-off and `POWEROFF.COM` do. QEMU's PIIX4
+    and ICH9 power management turn that into a shutdown by the guest.
+    So the runner, the GUI and the appliance (its "when the VM shuts
+    down" choice) see what they see when any guest turns itself off.
+    `quit` is the fallback if the port write fails.
+- What it leaves alone:
+  - Windows running: protected or V86 mode, which also covers its error
+    screens.
+  - A DOS prompt, including "Restart in MS-DOS mode": interrupts on.
+  - A paused VM, or one being saved: its samples start again when it
+    runs.
+  - A DOS program that spins on one instruction with interrupts off for
+    over 4 seconds would be turned off. Such a program has hung for
+    good anyway.
+- What Windows 98 leaves at that screen is not confirmed yet. If the rule
+  does not fire on the reporter's VM, the logs show what to change:
+  - `logs/watch.log` (in the diagnostics) records each entry into and out
+    of real mode, a few places while interrupts are off, and how it ended.
+  - The diagnostics also take two live samples.
+- The log is bounded. It does not record every sample, because in a
+  running Windows the place differs every time, and an appliance can run
+  for months from a USB stick. It writes at most 200 changes per run, then
+  only the ending. Across runs it is rotated at 2 MiB like `qemu.log`; the
+  runner now does that for every sidecar's log.
+- Tested:
+  - Unit tests with a fake QEMU cover the rule, a paused VM and the
+    log's size.
+  - `tests/integration/test_watch.py` runs Windows 98-profile VMs (TCG)
+    whose boot sector prints and then stops as above, with `hlt` and with
+    `jmp $`. Each VM turns itself off within seconds, and the serial log
+    shows that the guest ran.
+  - FreeDOS with the Windows 98 profile stays on at its prompt.
+  - The port write was also checked on a q35 machine: the shutdown
+    reason is `guest-shutdown`.

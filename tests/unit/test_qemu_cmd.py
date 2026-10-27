@@ -128,6 +128,21 @@ def test_windows_9x_gets_rehomes_vga_bios(vm, tmp_path, monkeypatch):
     assert "romfile" not in cirrus()
 
 
+def test_windows_9x_vms_are_watched_for_the_end_of_shutdown(vm, tmp_path):
+    """D45: a third QMP socket and the watcher sidecar, for Windows 9x only."""
+    vm.machine.type = "pc"
+    vm.os.family = "win9x"
+    plan = argv_of(vm, tmp_path, accel="tcg", log_dir=tmp_path)
+    assert any("qmp-watch.sock" in c for c in values(plan.argv, "-chardev"))
+    assert len(values(plan.argv, "-mon")) == 3
+    (sc,) = [s for s in plan.sidecars if s.name == "watch"]
+    assert sc.argv[-3:] == [vm.id, str(tmp_path / "run" / "qmp-watch.sock"),
+                            str(tmp_path / "watch.log")]
+    vm.os.family = "windows"
+    plan = argv_of(vm, tmp_path, accel="tcg")
+    assert len(values(plan.argv, "-mon")) == 2 and not plan.sidecars
+
+
 def test_q35_sata_ports(vm, tmp_path):
     vm.disks[0].bus = "sata"
     vm.cdroms.append(CdRom(id="cd0", bus="sata", file=""))

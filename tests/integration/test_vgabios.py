@@ -97,21 +97,17 @@ def test_a_windows_98_vm_starts_with_rehomes_vga_bios(stub_disk, tmp_path):
     assert cfg.os.family == "win9x" and cfg.display.device == "cirrus-vga"
     runner.start(cfg)
     try:
+        # The program ends with cli; hlt, so Rehome turns the VM off by itself (D45).
         deadline = time.monotonic() + 120
-        while True:
-            m = re.search(r"VGASTUB OUT=(\d+) AL=([0-9A-F]{2}) XS=([01]{3})",
-                          runner.screen_text(cfg))
-            if m:
-                break
-            assert time.monotonic() < deadline, runner.screen_text(cfg)
+        while runner.is_running(cfg):
+            assert time.monotonic() < deadline, (cfg.dir / "logs" / "watch.log").read_text()
             time.sleep(1)
-        assert (int(m.group(1)), m.group(2), m.group(3)) == (0, "12", "100")
-        log = (cfg.dir / "logs" / "qemu.log").read_text()
-        assert f"romfile={rom}" in log
-        # The diagnostics say where the processor is: the program ends with cli; hlt.
-        from rehome.vm import diagnostics
-        report = diagnostics.collect(cfg)
-        assert re.search(r"real mode at 0000:00007[0-9A-F]{3}, halted, interrupts off", report), \
-            report
     finally:
-        runner.force_off(cfg)
+        if runner.is_running(cfg):
+            runner.force_off(cfg)
+    m = re.search(r"VGASTUB OUT=(\d+) AL=([0-9A-F]{2}) XS=([01]{3})",
+                  (cfg.dir / "logs" / "serial.log").read_text(errors="replace"))
+    assert m and (int(m.group(1)), m.group(2), m.group(3)) == (0, "12", "100")
+    assert f"romfile={rom}" in (cfg.dir / "logs" / "qemu.log").read_text()
+    log = (cfg.dir / "logs" / "watch.log").read_text()
+    assert re.search(r"real mode at 0000:00007[0-9A-F]{3}, halted, interrupts off", log), log

@@ -11,7 +11,7 @@
 %global __brp_python_bytecompile %{nil}
 
 Name:           rehome
-Version:        0.3.17
+Version:        0.3.18
 Release:        1%{?dist}
 Summary:        Turn installed operating systems into QEMU/KVM virtual machines
 # LGPL: data/firmware (SeaBIOS's VGA BIOS)
@@ -143,6 +143,11 @@ python3 packaging/layout.py install \
 %{_datadir}/icons/hicolor/symbolic/apps/io.github.oreo1298.Rehome-symbolic.svg
 
 %changelog
+* Tue Oct 27 2026 Rehome contributors - 0.3.18-1
+- Windows 95/98/ME: the VM turns off a few seconds after Windows has finished
+  shutting down ("It's now safe to turn off your computer"), also without the APM
+  driver in Windows.
+
 * Tue Oct 27 2026 Rehome contributors - 0.3.17-1
 - Windows 95/98/ME: the VGA BIOS keeps its extra stack for DOS again (0.3.16 dropped
   every other character before Windows started, under KVM), and keeps it off once

@@ -569,6 +569,8 @@ def _start_sidecars(sidecars, rt: RuntimePaths) -> None:
         for sc in sidecars:
             if sc.socket:
                 Path(sc.socket).unlink(missing_ok=True)
+            if sc.log:
+                _rotate(Path(sc.log))
             out = open(sc.log, "a") if sc.log else subprocess.DEVNULL
             try:
                 p = subprocess.Popen(sc.argv, stdin=subprocess.DEVNULL, stdout=out,

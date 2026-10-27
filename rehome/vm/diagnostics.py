@@ -103,7 +103,7 @@ def collect(cfg: VMConfig) -> str:
     serial = cfg.dir / "logs" / "serial.log"
     if serial.exists() and serial.stat().st_size:
         parts += ["", "Last serial console lines:", _tail(serial, 30)]
-    for extra in ("patch.log", "import.log"):
+    for extra in ("watch.log", "patch.log", "import.log"):
         p = cfg.dir / "logs" / extra
         if p.exists():
             parts += ["", f"Last {extra} lines:", _tail(p, 40)]

@@ -34,6 +34,11 @@
     <control>pointing</control>
   </supports>
   <releases>
+    <release version="0.3.18" date="2026-10-27">
+      <description>
+        <p>Windows 95/98/ME: the VM turns off a few seconds after Windows has finished shutting down ("It's now safe to turn off your computer"), also without the APM driver in Windows.</p>
+      </description>
+    </release>
     <release version="0.3.17" date="2026-10-27">
       <description>
         <p>Windows 95/98/ME: text before Windows starts is shown correctly again (0.3.16 dropped every other character with KVM), and Windows 98 no longer hangs at a black screen when it shuts down.</p>

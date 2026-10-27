@@ -82,7 +82,7 @@ At power-on:
 
 | You do | What happens |
 |---|---|
-| Shut down the VM | The computer turns off (or, if chosen in the maintenance console, the VM starts again or the console opens). |
+| Shut down the VM | The computer turns off (or, if chosen in the maintenance console, the VM starts again or the console opens). Windows 95/98/ME, which stop at "It's now safe to turn off your computer", count as shut down a few seconds later. |
 | Press the power button | The VM is asked to shut down (like pressing a PC's power button); then the computer turns off. Holding it forces the computer off. |
 | Plug in a USB device | It is given to the VM, except keyboards and mice (they already reach the VM), network adapters, and the drive the appliance runs from. |
 | Built-in devices (a laptop's camera, fingerprint reader, Bluetooth) | They stay with the appliance; include one in the maintenance console's **USB devices** to give it to the VM. |

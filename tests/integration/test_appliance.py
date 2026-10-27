@@ -547,6 +547,8 @@ def test_a_vm_with_only_a_ps2_mouse_gets_the_computers_mouse(appliance, tmp_path
             assert time.monotonic() < deadline, st
             time.sleep(5)
         rc, out = sh.run("rm -f /run/rehome/console-message; "
+                         # every batch the touchpad agent sends (touchpad.py), for failures
+                         "systemctl set-environment REHOME_TOUCHPAD_TRACE=/tmp/tp-trace.jsonl; "
                          "systemctl --no-block start rehome-kiosk.service")
         assert rc == 0, out
         deadline = time.monotonic() + 600 * SLOW
@@ -667,6 +669,13 @@ def test_a_vm_with_only_a_ps2_mouse_gets_the_computers_mouse(appliance, tmp_path
 
         x0, y0, _n, lefts, rights = where()      # the middle, and no button pressed yet
         assert (x0, y0, lefts, rights) == (320, 240, 0, 0), (x0, y0, lefts, rights)
+
+        def trace():
+            return sh.run("tail -c 3000 /tmp/tp-trace.jsonl")[1]
+        # A swipe to the left moves left only.
+        touch("swipe -1200 0")
+        x, y, *_ = where()
+        assert x < x0 and y == y0, (x0, y0, x, y, trace())
         # Each edge in turn, so the directions are right too, and no wall on the way.
         touch("swipe -3000 0", 6)
         assert where()[0] == 0

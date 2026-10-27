@@ -154,8 +154,13 @@ def test_the_agent_sends_libinputs_events_until_the_vm_is_gone(tmp_path):
         sent.append(batch)
 
     stop = threading.Event()
-    tp.agent(send, stop, settings={"touchpad": {"tap": False, "speed": "slow"}},
-             interval=0.01, sysclass=sysclass, udev_data=udev, devdir=str(devdir), lib=lib)
+    trace = tmp_path / "trace.jsonl"
+    os.environ["REHOME_TOUCHPAD_TRACE"] = str(trace)
+    try:
+        tp.agent(send, stop, settings={"touchpad": {"tap": False, "speed": "slow"}},
+                 interval=0.01, sysclass=sysclass, udev_data=udev, devdir=str(devdir), lib=lib)
+    finally:
+        del os.environ["REHOME_TOUCHPAD_TRACE"]
     os.close(r)
     os.close(w)
     # The touchpad is configured; the keyboard only joins (for "disable while typing").
@@ -170,6 +175,9 @@ def test_the_agent_sends_libinputs_events_until_the_vm_is_gone(tmp_path):
          {"type": "btn", "data": {"button": "wheel-up", "down": False}}],
         [{"type": "rel", "data": {"axis": "x", "value": 1}}]]
     assert lib.unrefs == 1                  # the context is closed: the grab ends
+    import json
+    traced = [json.loads(line) for line in trace.read_text().splitlines()]
+    assert traced[:5] == sent and len(traced) == 6     # the last one failed to send
 
 
 def test_without_a_touchpad_nothing_is_opened(tmp_path):

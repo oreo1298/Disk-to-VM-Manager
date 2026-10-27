@@ -16,6 +16,7 @@ from __future__ import annotations
 import ctypes
 import ctypes.util
 import fcntl
+import json
 import logging
 import os
 import select
@@ -224,6 +225,8 @@ def agent(send, stop: threading.Event, settings: dict | None = None, interval: f
     from rehome.errors import RehomeError
     opts = options(settings or {})
     ps2 = ToPS2()
+    # For tests and debugging: every batch sent, one JSON line each.
+    trace = os.environ.get("REHOME_TOUCHPAD_TRACE")
     li: LibInput | None = None
     have = None
     try:
@@ -259,6 +262,9 @@ def agent(send, stop: threading.Event, settings: dict | None = None, interval: f
             ready, _, _ = select.select([li.fileno()], [], [], interval)
             if ready:
                 for batch in li.read(ps2):
+                    if trace:
+                        with open(trace, "a") as f:
+                            f.write(json.dumps(batch) + "\n")
                     try:
                         send(batch)
                     except RehomeError as e:

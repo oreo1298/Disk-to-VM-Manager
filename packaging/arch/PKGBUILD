@@ -6,12 +6,12 @@
 # `updpkgsums` and `makepkg --printsrcinfo > .SRCINFO` (see docs/PACKAGING.md).
 
 pkgname=rehome
-pkgver=0.3.13
+pkgver=0.3.14
 pkgrel=1
 pkgdesc='Turn installed operating systems into QEMU/KVM virtual machines'
 arch=('any')
 url='https://github.com/oreo1298/Disk-to-VM-Manager'
-license=('GPL-3.0-or-later')
+license=('GPL-3.0-or-later' 'LGPL-3.0-only')   # LGPL: data/firmware (SeaBIOS)
 depends=(
   'qemu-desktop'
   'edk2-ovmf'

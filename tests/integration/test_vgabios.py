@@ -76,3 +76,33 @@ def test_qemus_own_vga_bios_writes_outside_the_stack(stub_disk, tmp_path, device
         pytest.skip("no SeaVGABIOS with debug output is installed")
     outside, _al = run_stub(stub_disk, device, roms[0], tmp_path)
     assert outside > 0
+
+
+def test_a_windows_98_vm_starts_with_rehomes_vga_bios(stub_disk, tmp_path):
+    """Through Rehome: a VM with the Windows 98 profile gets the ROM (and the guest's
+    video calls stay on its stack)."""
+    rom = FIRMWARE / "vgabios-cirrus.bin"
+    if not rom.is_file():
+        pytest.skip(f"{rom} is not built (scripts/build_vgabios.py)")
+    from rehome.vm import create, disks, library, runner
+    img = tmp_path / "stub.qcow2"
+    disks.convert(str(stub_disk), str(img), src_fmt="raw")
+    cfg = create.create(create.NewVMSpec(name="Windows 98 stub", os="win98",
+                                         existing_disk=str(img), network="none"))
+    cfg.machine.accel = "tcg"
+    library.save(cfg)
+    assert cfg.os.family == "win9x" and cfg.display.device == "cirrus-vga"
+    runner.start(cfg)
+    try:
+        deadline = time.monotonic() + 120
+        while True:
+            m = re.search(r"VGASTUB OUT=(\d+) AL=([0-9A-F]{2})", runner.screen_text(cfg))
+            if m:
+                break
+            assert time.monotonic() < deadline, runner.screen_text(cfg)
+            time.sleep(1)
+        assert (int(m.group(1)), m.group(2)) == (0, "12")
+        log = (cfg.dir / "logs" / "qemu.log").read_text()
+        assert f"romfile={rom}" in log
+    finally:
+        runner.force_off(cfg)

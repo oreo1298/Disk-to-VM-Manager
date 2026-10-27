@@ -1134,3 +1134,51 @@ the maintenance console (admins know). The console should do more.
     - "When the VM shuts down: open the console".
     - Basic graphics, console at power-on, the volume and the password,
       checked after a restart.
+
+## D43. Windows 9x VMs get a VGA BIOS without debug output
+
+Reported: Windows 98 (in Rehome, and in an appliance with KVM) shows "A fatal
+exception 0D has occurred at C000:00002007" when it shuts down.
+
+- C000 is the VGA BIOS. At offset 2007h, SeaVGABIOS 1.17.0 as Ubuntu 26.04
+  ships it (also in the appliance) has `mov [ecx],dl` with a 32-bit
+  address, in `putuint`. That function writes the digits of a number for a
+  debug message.
+- Why it is reached:
+  - SeaVGABIOS answers video functions it does not implement with
+    `debug_stub()`, which prints "stub <function>:<line>".
+  - Once a video mode was set other than through the legacy INT 10h call
+    (as Windows' display driver does), SeaVGABIOS stops switching to its
+    own "extra stack" ("Disable extra stack if it appears a modern OS is
+    in use").
+  - The debug path is deep. On a caller's stack with little room left,
+    the C code's 32-bit stack arithmetic goes below zero or past 64 KB.
+    The digit store then leaves the 64 KB stack segment: exception 0D in
+    the V86 mode Windows calls the BIOS in.
+  - Under emulation (TCG) segment limits are not checked, so the same
+    writes silently land outside the segment.
+- Reproduced (`tests/fixtures/vgastub.asm`): with the extra stack off, INT
+  10h AX=1200h BL=36h (a stub) on stacks with 0400h–0040h bytes left.
+  SeaVGABIOS 1.16.3 (Ubuntu 24.04) and 1.17.0 (Ubuntu 26.04), Cirrus and
+  standard VGA, write outside the caller's stack segment. The last call
+  also loses AL.
+- Fix: Rehome ships SeaVGABIOS 1.17.0 built with QEMU's own configuration
+  and `CONFIG_DEBUG_LEVEL=0` (`scripts/build_vgabios.py`; `data/firmware/`,
+  with the source and license notes). `qemu_cmd` passes it as `romfile=`
+  for `cirrus-vga` and `VGA` in VMs whose OS family is win9x, existing
+  VMs included. The stub then only returns. Nothing else in the VGA BIOS
+  changes, and other VMs keep QEMU's.
+- Rejected:
+  - Patching the distribution's ROM: the bytes differ per build.
+  - The old LGPL VGABios: no longer packaged by most distributions, and
+    different in more ways.
+  - Asking for each distribution's ROM: the appliance's copy and SeaBIOS's
+    source were enough to find the cause.
+- License: SeaBIOS is LGPL-3.0-only. The packages declare it next to
+  Rehome's GPL-3.0-or-later.
+- Tested:
+  - `test_vgabios.py`: the stock ROMs fail as above. Rehome's write nothing
+    outside the stack and return AL=12h. A Windows 98-profile VM started
+    through Rehome gets the ROM, with the same result.
+  - Windows 98 itself shutting down could not be run here; to be
+    confirmed on the reporter's VM.

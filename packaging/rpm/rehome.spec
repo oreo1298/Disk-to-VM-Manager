@@ -11,10 +11,11 @@
 %global __brp_python_bytecompile %{nil}
 
 Name:           rehome
-Version:        0.3.13
+Version:        0.3.14
 Release:        1%{?dist}
 Summary:        Turn installed operating systems into QEMU/KVM virtual machines
-License:        GPL-3.0-or-later
+# LGPL: data/firmware (SeaBIOS's VGA BIOS)
+License:        GPL-3.0-or-later AND LGPL-3.0-only
 URL:            https://github.com/oreo1298/Disk-to-VM-Manager
 Source0:        %{url}/archive/v%{version}/%{name}-%{version}.tar.gz
 BuildArch:      noarch
@@ -142,6 +143,13 @@ python3 packaging/layout.py install \
 %{_datadir}/icons/hicolor/symbolic/apps/io.github.oreo1298.Rehome-symbolic.svg
 
 %changelog
+* Tue Oct 27 2026 Rehome contributors - 0.3.14-1
+- Windows 95/98/ME: a VGA BIOS without debug output (SeaBIOS 1.17.0), so Windows 98
+  no longer stops with "A fatal exception 0D has occurred at C000:00002007" when
+  it shuts down.
+- Appliance maintenance console: a page that fails shows the error instead of
+  closing the console; USB drives that can only be read are refused for saving.
+
 * Sat Oct 24 2026 Rehome contributors - 0.3.13-1
 - Appliances: after restoring a backup (or setting the maintenance password) the
   VM did not start: the appliance's configuration became unreadable to it.

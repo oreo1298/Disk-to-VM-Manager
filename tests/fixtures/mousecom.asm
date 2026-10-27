@@ -5,7 +5,8 @@
 ; (INT 15h C2xx, so no DOS mouse driver may be loaded), doubles moves of more than
 ; 6 counts (Windows' MouseThreshold1), keeps the cursor on a 640x480 screen and
 ; shows it on the first text line until a key is pressed:
-;   MOUSE X=00320 Y=00240 N=00000      (N = packets received)
+;   MOUSE X=00320 Y=00240 N=00000 L=00000 R=00000
+; (N = packets received, L and R = presses of the left and right buttons)
 ;
 ; Build: nasm -f bin -o MOUSE.COM mousecom.asm
 
@@ -61,7 +62,19 @@ handler:
         push cs
         pop ds
         mov ax, [bp+12]
-        mov bx, [bp+10]
+        mov dl, al                      ; buttons: bit 0 left, bit 1 right
+        and dl, 3
+        mov dh, [buttons]
+        mov [buttons], dl
+        not dh
+        and dh, dl                      ; pressed since the last packet
+        test dh, 1
+        jz .left
+        inc word [lefts]
+.left:  test dh, 2
+        jz .right
+        inc word [rights]
+.right: mov bx, [bp+10]
         xor bh, bh
         test al, 0x10                   ; X sign
         jz .x
@@ -118,6 +131,12 @@ show:   push es
         mov ax, [packets]
         mov di, line + 24
         call decimal
+        mov ax, [lefts]
+        mov di, line + 32
+        call decimal
+        mov ax, [rights]
+        mov di, line + 40
+        call decimal
         mov si, line
         xor di, di
         mov ah, 0x07
@@ -144,4 +163,7 @@ decimal:                                ; ax -> 5 digits at ds:di
 posx    dw 320
 posy    dw 240
 packets dw 0
-line    db "MOUSE X=00000 Y=00000 N=00000", 0
+lefts   dw 0
+rights  dw 0
+buttons db 0
+line    db "MOUSE X=00000 Y=00000 N=00000 L=00000 R=00000", 0

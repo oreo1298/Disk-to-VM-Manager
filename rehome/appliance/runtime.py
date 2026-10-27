@@ -485,6 +485,7 @@ def session() -> int:
                                        kwargs={"attached": given}, daemon=True))
     if relative_mouse_only(cfg):
         agents.append(threading.Thread(target=mouse_agent, args=(cfg, stop), daemon=True))
+        agents.append(threading.Thread(target=touchpad_agent, args=(cfg, stop), daemon=True))
     for a in agents:
         a.start()
     reason = ""
@@ -677,6 +678,27 @@ def mouse_agent(cfg, stop: threading.Event, interval: float = 1.0,
                 log.debug("mouse agent: %s", e)
         failed &= set(present.items())
         stop.wait(interval)
+
+
+def touchpad_agent(cfg, stop: threading.Event) -> None:
+    """Move a PS/2-only VM's mouse with the computer's touchpads (touchpad.py, D46), over
+    the VM's own QMP socket for this: the others are shared."""
+    from rehome.appliance import touchpad
+    from rehome.vm import runner
+    from rehome.vm.qmp import QMP
+    q = None
+
+    def send(events: list[dict]) -> None:
+        nonlocal q
+        if q is None:
+            q = QMP(runner.runtime(cfg).qmp_input, timeout=5).connect(retries=30)
+        q.execute("input-send-event", {"events": events})
+
+    try:
+        touchpad.agent(send, stop, settings=load_settings())
+    finally:
+        if q is not None:
+            q.close()
 
 
 # --- USB ------------------------------------------------------------------------------------

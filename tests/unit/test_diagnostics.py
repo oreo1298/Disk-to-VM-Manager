@@ -1,4 +1,4 @@
-from rehome.vm.diagnostics import cpu_summary
+from rehome.vm.diagnostics import cpu_summary, memory_notes
 
 DUMP = """CPU#0
 EAX=00000000 EBX=00000000 ECX=00000000 EDX=00000663
@@ -18,3 +18,18 @@ def test_where_the_processor_is():
     pm = DUMP.replace("EFL=00020202", "EFL=00000202").replace("CS =c000", "CS =0028")
     assert cpu_summary(pm).startswith("protected mode at 0028:00002007")
     assert cpu_summary("no registers") == "(no x86 register dump)"
+
+
+def test_the_memory_around_a_hang():
+    """The BIOS's video variables, the code at CS:EIP and the stack, at linear addresses."""
+    dump = DUMP + ("ESP=000135de\nSS =ed6c 000ed6c0 0000ffff 0000f300 DPL=3 DS16 [-WA]\n")
+    asked = []
+    notes = memory_notes(dump, lambda a, f: asked.append((a, f)) or f"{a:08x}: 00\r\n")
+    assert asked == [(0x449, "/26xb"), (0x484, "/4xb"), (0xC0000 + 0x2007, "/32xb"),
+                     (0xED6C0 + 0x35DE, "/48xh")]          # a 16-bit stack: SP only
+    assert "Stack at SS:ESP:" in notes and "000f0c9e: 00" in notes
+    flat = dump.replace("DPL=3 DS16 [-WA]", "DPL=0 DS   [-WA]")
+    asked.clear()
+    memory_notes(flat, lambda a, f: asked.append((a, f)) or "")
+    assert asked[-1] == (0xED6C0 + 0x135DE, "/48xh")
+    assert memory_notes("no registers", lambda a, f: "") == []

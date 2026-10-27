@@ -143,6 +143,19 @@ def test_windows_9x_vms_are_watched_for_the_end_of_shutdown(vm, tmp_path):
     assert len(values(plan.argv, "-mon")) == 2 and not plan.sidecars
 
 
+def test_appliance_vms_with_only_a_ps2_mouse_get_a_socket_for_the_touchpad(vm, tmp_path):
+    """D46: the appliance's touchpad agent moves the PS/2 mouse over its own QMP socket."""
+    def sockets():
+        return [c for c in values(argv_of(vm, tmp_path, accel="tcg").argv, "-chardev")
+                if "qmp-input.sock" in c]
+    vm.display.console, vm.input.pointer = "kiosk", "ps2"
+    assert len(sockets()) == 1
+    vm.input.pointer = "usb-tablet"
+    assert sockets() == []
+    vm.display.console, vm.input.pointer = "dbus", "ps2"
+    assert sockets() == []
+
+
 def test_q35_sata_ports(vm, tmp_path):
     vm.disks[0].bus = "sata"
     vm.cdroms.append(CdRom(id="cd0", bus="sata", file=""))

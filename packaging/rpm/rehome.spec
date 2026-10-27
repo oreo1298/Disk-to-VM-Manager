@@ -11,7 +11,7 @@
 %global __brp_python_bytecompile %{nil}
 
 Name:           rehome
-Version:        0.3.18
+Version:        0.3.19
 Release:        1%{?dist}
 Summary:        Turn installed operating systems into QEMU/KVM virtual machines
 # LGPL: data/firmware (SeaBIOS's VGA BIOS)
@@ -143,6 +143,13 @@ python3 packaging/layout.py install \
 %{_datadir}/icons/hicolor/symbolic/apps/io.github.oreo1298.Rehome-symbolic.svg
 
 %changelog
+* Tue Oct 27 2026 Rehome contributors - 0.3.19-1
+- Appliances: a laptop's touchpad drives DOS and Windows 9x VMs directly, with tap to
+  click and two-finger scrolling, instead of stopping at the screen's edges. Its speed
+  and tap to click are set on the maintenance console's "Screen and touchpad" page.
+- Diagnostics of a running VM include the BIOS's video state, the code the processor
+  runs and its stack.
+
 * Tue Oct 27 2026 Rehome contributors - 0.3.18-1
 - Windows 95/98/ME: the VM turns off a few seconds after Windows has finished
   shutting down ("It's now safe to turn off your computer"), also without the APM

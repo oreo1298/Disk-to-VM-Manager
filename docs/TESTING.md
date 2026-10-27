@@ -156,7 +156,9 @@ screen; GRUB's `recordfail` cleared once the VM shows; the USB stick handed
 to the VM; the power button reaching the appliance; and, after choosing the
 maintenance entry for the next boot, the console after a password login on
 the screen and starting the VM from it. Two more boots check that a VM
-with only a PS/2 mouse gets the computer's mouse (D41), and the
+with only a PS/2 mouse gets the computer's mouse (D41) and a touchpad
+(D46: one made with uinput, whose swipes reach every edge through libinput,
+and whose taps click), and the
 maintenance console (D42): M on the start screen, which does not mention
 it; a backup to a FAT32 USB stick image restored over the VM, which then
 starts; a CD image from the stick; the VM shutting down into the console;

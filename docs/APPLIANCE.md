@@ -99,13 +99,14 @@ scaled to fit, with black bars when the shape differs (a 4:3 desktop on a
 DOS and Windows 9x VMs have only a PS/2 mouse, which moves the guest's own
 cursor by small steps. The appliance hands the computer's mice straight to
 such a VM, including mice plugged in later. It moves exactly like a mouse
-on an old PC, with no invisible edges. A laptop's touchpad still goes
-through the VM's window. In a VM with only a PS/2 mouse, that window
-cannot keep the pointer from stopping at the screen's edges, so use a
-mouse.
+on an old PC, with no invisible edges. A laptop's touchpad drives that
+mouse too, as on a Linux desktop: tap to click, a two-finger tap for the
+right button, two fingers to scroll, and nothing while you type. Its speed
+and tap to click are on the maintenance console's **Screen and touchpad**
+page; Windows' own mouse settings change the speed too.
 
 If the picture is garbled or the screen stays black with a particular
-graphics card, use the maintenance console's **Screen** page: turn OpenGL
+graphics card, use the maintenance console's **Screen and touchpad** page: turn OpenGL
 drawing off (garbled picture), or always start with basic graphics (black
 screen). For a single start, press Esc while the computer starts and
 choose **with basic graphics**, or select the **Start** entry, press `e`,
@@ -176,7 +177,7 @@ the network, the clock and the free space.
 | 6 | Network and Wi-Fi | Connect to a Wi-Fi network, forget one, test the connection. |
 | 7 | Date, time and time zone | Internet time, or the date and time set by hand (for computers that are never online); the time zone. |
 | 8 | Sound | The volume (a mixer; it is kept across restarts), a test sound. |
-| 9 | Screen | Always start with basic graphics; OpenGL drawing on or off; restart once with basic graphics. |
+| 9 | Screen and touchpad | Always start with basic graphics; OpenGL drawing on or off; restart once with basic graphics; the touchpad's speed and tap to click (DOS and Windows 9x VMs). |
 | 10 | Startup and shutdown | At power-on, start the VM or open the console; how many seconds "Starting …" waits for M (0–60); when the VM shuts down, turn the computer off, start the VM again, or open the console. The power button always turns the computer off. |
 | 11 | Maintenance password | Set, change or remove the password the console asks for (log in as `root`). Building with `--maintenance-password` sets one from the start. |
 | 12 | Storage | Free space; the VM's disks, CD/DVD images and checkpoints. |

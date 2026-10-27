@@ -1306,3 +1306,73 @@ now safe to turn off your computer" and the VM stays on.
   - FreeDOS with the Windows 98 profile stays on at its prompt.
   - The port write was also checked on a q35 machine: the shutdown
     reason is `guest-shutdown`.
+- Reported after 0.3.18: the reporter's Windows 98 still stops at a black
+  screen with a blinking cursor, and the VM stays on.
+  - It is First Edition (the NDIS patch says so), so the Windows 98 SE
+    Shutdown Supplement does not apply.
+  - The 0.3.15 diagnostics of that screen showed V86 mode inside the VGA
+    BIOS's teletype and scroll code, with interrupts off. CR2 was BF000,
+    in text memory.
+  - The rule above rightly leaves that alone: it is a hang before the end
+    of the shutdown, not the end.
+  - 0.3.19's diagnostics also record the BIOS's video variables
+    (0040:0049, 0040:0084), the code at CS:EIP and the stack, whose return
+    addresses name whatever keeps printing. They are read through the
+    guest's own page tables (QEMU's `x`).
+
+## D46. Appliance: touchpads go through libinput to VMs that only have a PS/2 mouse
+
+Reported after D41: in a Windows 98 appliance on a laptop, the touchpad still
+"gets stuck a lot". With a mouse it is better.
+
+- D41 gave mice straight to QEMU (`input-linux`), but left touchpads with
+  cage and QEMU's SDL window. That is the path that hits walls: cage cannot
+  lock the pointer, so the hidden pointer stops at the screen's edges while
+  Windows' accelerated cursor is elsewhere.
+- `input-linux` cannot take a touchpad. A touchpad reports where the finger
+  is, and QEMU would pass that on as positions.
+- 0.3.19: the appliance reads touchpads itself, with libinput
+  (`rehome/appliance/touchpad.py`).
+  - libinput is what Linux desktops use for tapping, the click areas of
+    clickpads, two-finger scrolling, palm detection and ignoring the
+    touchpad while typing. The appliance has it already: cage needs it,
+    through wlroots. It is used through ctypes (path backend).
+  - Touchpads are the event devices udev marks `ID_INPUT_TOUCHPAD`. They are
+    grabbed (`EVIOCGRAB`), so cage no longer moves its pointer with them.
+    Keyboards join the libinput context ungrabbed, so "disable while
+    typing" works with a laptop's own keyboard.
+  - libinput's accelerated movement, its buttons and two-finger scrolling
+    (one wheel click per 15 units) go to the VM's PS/2 mouse with QMP
+    `input-send-event`. QEMU makes one PS/2 packet per command, so each
+    button change gets its own command; a press and release in one would
+    be lost.
+  - Commands go over a QMP socket of their own (`qmp-input.sock`, only for
+    kiosk VMs whose pointer is `ps2`). The other sockets are shared with
+    short-lived users such as the USB agent, and a held connection would
+    block them.
+  - The movement is accelerated by libinput and again by Windows, like a
+    mouse's raw movement is by Windows. No touchpad was at hand to tune
+    against, so the maintenance console's "Screen and touchpad" page sets
+    the speed (libinput's -0.5, 0 or 0.5) and turns tap to click on (the
+    default) or off. Windows' own mouse settings change the speed too.
+  - libinput's own touchpad units are not used: they differ between
+    touchpads.
+- VMs with a tablet (Windows XP and later, Linux) keep the touchpad on
+  cage's absolute pointer, which has no walls.
+- Not done: an absolute pointer for Windows 9x. That would need a
+  third-party driver inside Windows (VBADOS's VBMOUSE.DRV, made for
+  Windows 3.x). Under 9x it works only with workarounds, with reports of
+  "insufficient memory" errors.
+- Tested:
+  - Unit tests: the settings, finding touchpads and keyboards from sysfs
+    and udev's data, the conversion to PS/2 events (fractions kept, buttons
+    one per batch, wheel clicks) and the agent against a scripted
+    libinput.
+  - The ctypes calls against libinput 1.25.
+  - `test_a_vm_with_only_a_ps2_mouse_gets_the_computers_mouse` (run
+    pending at this commit): the emulated appliance has no touchpad, so the
+    test makes one with uinput (`tests/fixtures/uinput_touchpad.py`, real
+    multi-touch events). Through the appliance's libinput 1.31 and the
+    agent, its swipes must move a DOS program's Windows-like cursor
+    (`tests/fixtures/mousecom.asm`) to every edge of the screen. A tap must
+    count as a left click, and a two-finger tap as a right click.

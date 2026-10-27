@@ -12,6 +12,7 @@ the base system (about 1.2 GB) into the cache.
 
 from __future__ import annotations
 
+import base64
 import os
 import re
 import shutil
@@ -488,11 +489,24 @@ def test_boots_on_uefi(appliance, tmp_path):
         pc.stop()
 
 
+def _put(sh, text: str, path: str) -> None:
+    """Write a file in the appliance through its serial console (in short lines)."""
+    data = base64.b64encode(text.encode()).decode()
+    rc, out = sh.run(f"rm -f {path}.b64")
+    for i in range(0, len(data), 1000):
+        rc, out = sh.run(f"echo {data[i:i + 1000]} >> {path}.b64")
+        assert rc == 0, out
+    rc, out = sh.run(f"base64 -d {path}.b64 > {path}")
+    assert rc == 0, out
+
+
 def test_a_vm_with_only_a_ps2_mouse_gets_the_computers_mouse(appliance, tmp_path):
     """Regression: in a Windows 98 appliance the mouse hit "invisible walls". cage cannot
     lock the pointer, so the hidden pointer stopped at the screen's edges while the
     guest's own cursor was elsewhere. A VM with only a PS/2 mouse now gets the computer's
-    mice through QEMU's input-linux: every movement reaches the guest, at any position."""
+    mice through QEMU's input-linux: every movement reaches the guest, at any position.
+    Touchpads (D46) go through libinput to the VM's PS/2 mouse: no walls either, and
+    tapping clicks."""
     cfg, out = appliance
     image = tmp_path / "mouse.qcow2"
     subprocess.run(["qemu-img", "create", "-f", "qcow2", "-b", str(out), "-F", "qcow2",
@@ -542,7 +556,7 @@ def test_a_vm_with_only_a_ps2_mouse_gets_the_computers_mouse(appliance, tmp_path
             while True:                       # until it stops changing
                 time.sleep(5 * SLOW)
                 _, text = sh.run(f"rehome screen-text {cfg.id}")
-                m = re.search(r"MOUSE X=(\d+) Y=(\d+) N=(\d+)", text)
+                m = re.search(r"MOUSE X=(\d+) Y=(\d+) N=(\d+) L=(\d+) R=(\d+)", text)
                 now = tuple(int(v) for v in m.groups()) if m else None
                 if now and now == last:
                     return now
@@ -555,12 +569,12 @@ def test_a_vm_with_only_a_ps2_mouse_gets_the_computers_mouse(appliance, tmp_path
                     {"type": "rel", "data": {"axis": "x", "value": dx}},
                     {"type": "rel", "data": {"axis": "y", "value": dy}}]})
                 time.sleep(0.05)
-        x, y, n = where()
+        x, y, n, *_ = where()
         assert (x, y) == (320, 240), (x, y)       # n may count an empty packet already
         def kernel():                         # the appliance's PS/2 driver, for failures
             return sh.run("journalctl -k -b --no-pager | grep -i psmouse | tail -5")[1]
         move(5, 0, 20)
-        x, y, n2 = where()
+        x, y, n2, *_ = where()
         # Nested emulation is slow enough for the appliance's PS/2 driver to drop some
         # packets ("lost synchronization"); on a real computer the mouse is real.
         assert n2 > n and x > 320 and y == 240, (x, y, n2, kernel())
@@ -570,8 +584,54 @@ def test_a_vm_with_only_a_ps2_mouse_gets_the_computers_mouse(appliance, tmp_path
         move(-40, 30, 60)
         assert where()[:2] == (0, 479), kernel()
         move(25, -40, 60)
-        x, y, _ = where()
+        x, y, *_ = where()
         assert y == 0 and x > 300, (x, y, kernel())
+
+        # A touchpad: uinput makes one (the outer machine has none), with real multi-touch
+        # events, so libinput handles it as a laptop's.
+        _put(sh, (Path(__file__).resolve().parents[1] / "fixtures" / "uinput_touchpad.py")
+             .read_text(), "/root/touchpad.py")
+        rc, out = sh.run("rm -f /run/tp && mkfifo /run/tp && "
+                         "(setsid python3 /root/touchpad.py /run/tp >/run/tp.log 2>&1 &)")
+        assert rc == 0, out
+        deadline = time.monotonic() + 300 * SLOW
+        while True:
+            _, found = sh.run("journalctl -b --no-pager | grep \"moves the VM's mouse\" || true")
+            if "Rehome test touchpad" in found:
+                break
+            assert time.monotonic() < deadline, sh.run(
+                "cat /run/tp.log; journalctl -b --no-pager | tail -40")[1]
+            time.sleep(5)
+
+        def touch(gesture, times=1):
+            for _ in range(times):
+                _, before = sh.run("grep -c done /run/tp.log || true")
+                rc, out = sh.run(f"echo '{gesture}' > /run/tp", timeout=60 * SLOW)
+                assert rc == 0, out
+                deadline = time.monotonic() + 60 * SLOW
+                while True:
+                    _, now = sh.run("grep -c done /run/tp.log || true")
+                    if int(now.strip() or 0) > int(before.strip() or 0):
+                        break
+                    assert time.monotonic() < deadline, sh.run("cat /run/tp.log")[1]
+                    time.sleep(1)
+
+        x0, y0, _n, lefts, rights = where()      # the mouse left it at the top
+        touch("swipe -1200 600")
+        x, y, *_ = where()
+        assert x < x0 and y > y0, (x0, y0, x, y)
+        # No wall anywhere for the touchpad either: swipes reach every edge.
+        touch("swipe -3000 0", 6)
+        assert where()[0] == 0
+        touch("swipe 3000 2200", 6)
+        assert where()[:2] == (639, 479)
+        touch("swipe 0 -2000", 6)               # clear of the clickpad's button area
+        assert where()[1] == 0
+        # Tap to click, and a two-finger tap for the right button.
+        touch("tap")
+        assert where()[3:] == (lefts + 1, rights)
+        touch("tap2")
+        assert where()[3:] == (lefts + 1, rights + 1)
     finally:
         pc.stop()
 

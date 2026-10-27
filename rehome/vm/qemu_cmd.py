@@ -46,6 +46,10 @@ class RuntimePaths:
         return str(self.run / "qmp-watch.sock")
 
     @property
+    def qmp_input(self) -> str:
+        return str(self.run / "qmp-input.sock")
+
+    @property
     def pidfile(self) -> str:
         return str(self.run / "qemu.pid")
 
@@ -313,6 +317,9 @@ class Builder:
             log = (self.opts.log_dir or self.rt.run) / "watch.log"
             self.sidecars.append(Sidecar("watch", watch.sidecar_argv(
                 self.cfg.id, self.rt.qmp_watch, str(log)), log=str(log)))
+        if self.cfg.display.console == "kiosk" and self.cfg.input.pointer == "ps2":
+            # The appliance moves the PS/2 mouse with the touchpad (rehome/appliance/touchpad.py).
+            paths.append(self.rt.qmp_input)
         for i, path in enumerate(paths):
             self.a("-chardev", f"socket,id=qmp{i},path={path},server=on,wait=off")
             self.a("-mon", f"chardev=qmp{i},mode=control")

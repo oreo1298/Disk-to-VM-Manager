@@ -36,16 +36,46 @@ def cpu_summary(dump: str) -> str:
             f"interrupts {'on' if efl & 1 << 9 else 'off'}")
 
 
+def memory_notes(dump: str, read) -> list[str]:
+    """For hangs in BIOS code (Windows 9x, DOS): the BIOS's video variables, the code the
+    processor runs and its stack, whose return addresses name the caller. ``read(address,
+    format)`` is QEMU's "x" (linear addresses, through the guest's own page tables)."""
+    def reg(name):
+        m = re.search(rf"\b{name}\s*=\s*([0-9a-fA-F]+)", dump)
+        return int(m.group(1), 16) if m else None
+
+    def segment(name):                  # (base, 16-bit) from "SS =ed6c 000ed6c0 0000ffff ..."
+        m = re.search(rf"^{name}\s*=[0-9a-fA-F]+ ([0-9a-fA-F]+) .*$", dump, re.M)
+        return (int(m.group(1), 16), "DS16" in m.group(0) or "CS16" in m.group(0)) if m \
+            else (None, False)
+
+    eip, esp = reg("EIP"), reg("ESP")
+    (cs, _), (ss, ss16) = segment("CS"), segment("SS")
+    if None in (eip, esp, cs, ss):
+        return []
+    out = []
+    for title, address, fmt in (
+            ("BIOS video state at 0040:0049 (mode, columns, page size, page start, "
+             "cursors, cursor shape, page)", 0x449, "/26xb"),
+            ("BIOS video rows at 0040:0084", 0x484, "/4xb"),
+            ("Code at CS:EIP", cs + eip, "/32xb"),
+            ("Stack at SS:ESP", ss + (esp & 0xFFFF if ss16 else esp), "/48xh")):
+        out += ["", f"{title}:", read(address, fmt).replace("\r", "").strip()]
+    return out
+
+
 def cpu_state(cfg: VMConfig, samples: int = 2, interval: float = 1.0) -> str:
     """Where a running guest's processor is, sampled ``samples`` times (for hangs: halted
-    for good, or looping somewhere), with the last full register dump."""
+    for good, or looping somewhere), with the last full register dump and the memory
+    around it (memory_notes)."""
     dumps = []
     with runner.qmp(cfg) as q:
         for i in range(samples):
             if i:
                 time.sleep(interval)
             dumps.append(q.hmp("info registers").replace("\r", ""))
-    return "\n".join([cpu_summary(d) for d in dumps] + ["", dumps[-1].strip()])
+        notes = memory_notes(dumps[-1], lambda a, f: q.hmp(f"x {f} {a:#x}"))
+    return "\n".join([cpu_summary(d) for d in dumps] + ["", dumps[-1].strip()] + notes)
 
 
 def collect(cfg: VMConfig) -> str:

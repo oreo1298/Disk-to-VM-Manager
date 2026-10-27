@@ -16,7 +16,7 @@ Rehome is a Linux desktop app for QEMU/KVM. It does two jobs:
 
 Everything the GUI does is also available on the command line (`rehome --help`).
 
-> **Status: 0.3.18, early release.** The engine, CLI and GUI work, and they are
+> **Status: 0.3.19, early release.** The engine, CLI and GUI work, and they are
 > tested on synthetic disks and on real FreeDOS, ReactOS and Ubuntu guests. Real
 > Windows and 9x installations were not tested yet; see
 > [What has been tested](#what-has-been-tested).
@@ -401,6 +401,7 @@ scripts. Add `-v` to any command for technical details.
 | Windows 95/98: "While initializing device NDIS: Windows protection error" | The CPU is too fast for a timing loop in NDIS.VXD, even under emulation on a fast computer. Update Rehome, turn the VM off and run `rehome patch run VM --only win9x.cpu_speed`. Rebuild an appliance afterwards: it carries a copy of the disk. |
 | Windows 95/98 stays at "It's now safe to turn off your computer" | Rehome 0.3.18 and later turn the VM off a few seconds after that screen appears. If it stays on, send `rehome diagnostics VM` from that screen: it shows where the processor stopped (and the VM's `watch.log`). Adding "Advanced Power Management support" in Windows is not needed, and it can hang Windows 98 while it boots. |
 | The mouse cursor does not move in DOS or Windows 9x (Rehome 0.3.8 and older) | Update Rehome. Older versions treated a PS/2 mouse as absolute, so the cursor never moved. |
+| In an appliance, a laptop's touchpad gets stuck in DOS or Windows 9x (Rehome 0.3.18 and older) | Update Rehome and rebuild the appliance: touchpads now drive the VM's mouse directly, with tap to click. The maintenance console's **Screen and touchpad** page sets their speed. |
 | The mouse is captured in DOS or Windows 9x | These systems only have a relative PS/2 mouse. Click in the console to capture it: the guest cursor jumps to where you clicked. It lines up again whenever you reach an edge of the screen. Press Ctrl+Alt to release it. GTK 4 cannot hold the hidden pointer inside the window, so if the cursors drift apart, move to an edge. |
 | No network in the VM | NAT uses `passt` when it is installed, otherwise QEMU's built-in NAT. For a bridge, see **Settings → Network** (needs `qemu-bridge-helper` set up by your distribution). |
 | A disk is "in use" and cannot be imported | Unmount its partitions, turn off swap on it, or deactivate LVM/RAID on it. Rehome never imports a disk the host is using. |

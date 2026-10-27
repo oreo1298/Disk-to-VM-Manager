@@ -189,6 +189,15 @@ def test_screen_page_sets_graphics_and_opengl(monkeypatch):
     assert saved["screen"] == {"gl": False}
 
 
+def test_screen_page_sets_the_touchpad(monkeypatch):
+    saved = {}
+    monkeypatch.setattr(runtime, "load_settings", lambda: dict(saved))
+    monkeypatch.setattr(console, "_save_settings", lambda s: saved.update(s))
+    Script(monkeypatch, ["4", "warp", "4", "Slow", "5", ""])
+    console.screen({})
+    assert saved["touchpad"] == {"speed": "slow", "tap": False}
+
+
 def test_the_clock_is_set_by_hand(monkeypatch):
     s = Script(monkeypatch, ["2026-02-30 10:00", "", "2026-10-24 14:05"])
     console.set_time()                               # not a date: nothing is run

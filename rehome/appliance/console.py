@@ -707,20 +707,28 @@ def _grubenv() -> dict[str, str]:
 
 
 def screen(conf: dict) -> None:
+    from rehome.appliance import touchpad
     while True:
         basic = _grubenv().get("rehome_default") == "vm-basic"
         settings = runtime.load_settings()
         gl = runtime.opengl(settings, args={})
+        pad = touchpad.options(settings)
         _clear()
-        print("Screen\n")
+        print("Screen and touchpad\n")
         print("  Graphics:        " + ("basic (the firmware's display, no acceleration)"
                                        if basic else "normal"))
         print(f"  OpenGL drawing:  {'on' if gl else 'off'}")
+        print(f"  Touchpad:        {pad['speed']} speed, tap to click "
+              f"{'on' if pad['tap'] else 'off'}")
         print("\n  If the VM's picture is garbled or flickers, turn OpenGL drawing off.\n"
-              "  If the screen stays black when the VM starts, use basic graphics.\n")
+              "  If the screen stays black when the VM starts, use basic graphics.\n"
+              "  The touchpad settings are for DOS and Windows 95/98/ME VMs, from the next\n"
+              "  start of the VM; Windows' own mouse settings change the speed too.\n")
         print(f"   1  Always start with {'normal' if basic else 'basic'} graphics")
         print(f"   2  Turn OpenGL drawing {'off' if gl else 'on'}")
-        print("   3  Restart now with basic graphics (this time only)\n   Enter  Back")
+        print("   3  Restart now with basic graphics (this time only)")
+        print("   4  Touchpad speed")
+        print(f"   5  Turn tap to click {'off' if pad['tap'] else 'on'}\n   Enter  Back")
         c = _ask("\n  Choose: ")
         if c == "1":
             _run(["grub-editenv", runtime.GRUBENV] +
@@ -732,6 +740,17 @@ def screen(conf: dict) -> None:
             _run(["grub-editenv", runtime.GRUBENV, "set", "next_entry=vm-basic"])
             _run(["systemctl", "reboot"])
             time.sleep(30)
+        elif c in ("4", "5"):
+            new = dict(pad)
+            if c == "4":
+                speed = _ask("  Speed (slow, normal or fast; Enter: keep): ").strip().lower()
+                if speed not in touchpad.SPEEDS:
+                    continue
+                new["speed"] = speed
+            else:
+                new["tap"] = not pad["tap"]
+            settings["touchpad"] = new
+            _save_settings(settings)
         else:
             return
 
@@ -950,7 +969,7 @@ MENU = [
     ("6", "Network and Wi-Fi", network),
     ("7", "Date, time and time zone", clock),
     ("8", "Sound", sound),
-    ("9", "Screen", screen),
+    ("9", "Screen and touchpad", screen),
     ("10", "Startup and shutdown", startup_and_shutdown),
     ("11", "Maintenance password", maintenance_password),
     ("12", "Storage", storage),

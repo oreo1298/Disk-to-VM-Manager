@@ -1180,5 +1180,14 @@ exception 0D has occurred at C000:00002007" when it shuts down.
   - `test_vgabios.py`: the stock ROMs fail as above. Rehome's write nothing
     outside the stack and return AL=12h. A Windows 98-profile VM started
     through Rehome gets the ROM, with the same result.
-  - Windows 98 itself shutting down could not be run here; to be
-    confirmed on the reporter's VM.
+  - Windows 98 itself shutting down could not be run here. On the
+    reporter's VM (0.3.14) the exception is gone, but the shutdown now
+    ends at a black screen with a blinking cursor, and the VM stays on.
+    SeaBIOS's APM power-off writes the same ACPI register as
+    `POWEROFF.COM`, which turns QEMU off. So Windows does not get as far
+    as asking the BIOS, or does not use APM.
+  - To see where it stops, `rehome diagnostics` now reports a running VM's
+    processor, sampled twice a second apart: its mode (real, V86,
+    protected), CS:EIP, halted or not, and interrupts on or off, plus
+    QEMU's register dump. On the test VM it reports the program's final
+    `cli; hlt` as halted, interrupts off.

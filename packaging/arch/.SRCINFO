@@ -1,6 +1,6 @@
 pkgbase = rehome
 	pkgdesc = Turn installed operating systems into QEMU/KVM virtual machines
-	pkgver = 0.3.14
+	pkgver = 0.3.15
 	pkgrel = 1
 	url = https://github.com/oreo1298/Disk-to-VM-Manager
 	arch = any
@@ -33,7 +33,7 @@ pkgbase = rehome
 	optdepends = ddrescue: rescue failing disks to an image
 	optdepends = libewf: import E01 forensic images
 	optdepends = syslinux: make FreeDOS and MS-DOS disks bootable whose boot sector was written on Linux
-	source = rehome-0.3.14.tar.gz::https://github.com/oreo1298/Disk-to-VM-Manager/archive/refs/tags/v0.3.14.tar.gz
+	source = rehome-0.3.15.tar.gz::https://github.com/oreo1298/Disk-to-VM-Manager/archive/refs/tags/v0.3.15.tar.gz
 	sha256sums = SKIP
 
 pkgname = rehome

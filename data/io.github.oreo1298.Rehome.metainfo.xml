@@ -34,6 +34,11 @@
     <control>pointing</control>
   </supports>
   <releases>
+    <release version="0.3.15" date="2026-10-27">
+      <description>
+        <p>Diagnostics of a running VM say where its processor is (its mode, the code it runs, whether it is halted), to find out where a guest hangs.</p>
+      </description>
+    </release>
     <release version="0.3.14" date="2026-10-27">
       <description>
         <p>Windows 95/98/ME VMs get a VGA BIOS without debug output, so Windows 98 no longer stops with "A fatal exception 0D has occurred at C000:00002007" when it shuts down. The appliance's maintenance console shows an error instead of closing when one of its pages fails.</p>

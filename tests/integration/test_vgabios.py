@@ -104,5 +104,10 @@ def test_a_windows_98_vm_starts_with_rehomes_vga_bios(stub_disk, tmp_path):
         assert (int(m.group(1)), m.group(2)) == (0, "12")
         log = (cfg.dir / "logs" / "qemu.log").read_text()
         assert f"romfile={rom}" in log
+        # The diagnostics say where the processor is: the program ends with cli; hlt.
+        from rehome.vm import diagnostics
+        report = diagnostics.collect(cfg)
+        assert re.search(r"real mode at 0000:00007[0-9A-F]{3}, halted, interrupts off", report), \
+            report
     finally:
         runner.force_off(cfg)

@@ -11,7 +11,7 @@
 %global __brp_python_bytecompile %{nil}
 
 Name:           rehome
-Version:        0.3.14
+Version:        0.3.15
 Release:        1%{?dist}
 Summary:        Turn installed operating systems into QEMU/KVM virtual machines
 # LGPL: data/firmware (SeaBIOS's VGA BIOS)
@@ -143,6 +143,10 @@ python3 packaging/layout.py install \
 %{_datadir}/icons/hicolor/symbolic/apps/io.github.oreo1298.Rehome-symbolic.svg
 
 %changelog
+* Tue Oct 27 2026 Rehome contributors - 0.3.15-1
+- rehome diagnostics: for a running VM, where its processor is (mode, CS:EIP, halted
+  or not), to find out where a guest hangs.
+
 * Tue Oct 27 2026 Rehome contributors - 0.3.14-1
 - Windows 95/98/ME: a VGA BIOS without debug output (SeaBIOS 1.17.0), so Windows 98
   no longer stops with "A fatal exception 0D has occurred at C000:00002007" when

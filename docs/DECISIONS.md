@@ -1218,14 +1218,20 @@ the VM stays on.
     any of which can be inside the VGA BIOS when Windows switches between
     them. The calls then share one stack.
 - 0.3.16 built the ROMs without the extra stack (`CONFIG_VGA_ALLOCATE_
-  EXTRA_STACK` off). That was wrong.
-  - On the reporter's VM (KVM) the DOS part of the boot (BIOS messages,
-    `AUTOEXEC.BAT`) then showed only every other character.
-  - DOS calls INT 10h on small stacks, and a deep call such as a mode
-    set overflows them. Under KVM the processor checks real-mode segment
-    limits and faults, so the call stops half-way.
-  - Emulation (TCG) checks no limits, which is why the tests here did
-    not show it: they read the text in video memory, not the screen.
+  EXTRA_STACK` off). That gives up what the stack is for: DOS calls INT
+  10h on small stacks, and under KVM the processor checks real-mode
+  segment limits, so a deep call on such a stack faults half-way.
+  Emulation (TCG) checks no limits, so the tests here cannot show that.
+  - On the reporter's VM the DOS part of the boot then stayed on screen
+    with every other character missing. That was first taken for this.
+  - The next diagnostics (0.3.17, which has the stack again) showed the
+    same screen with Windows' kernel looping in protected mode
+    (0028:C0009809, CR2=EAX=F000F855). So the boot hung after the DOS
+    part, and the garbled text is more likely the display left half-way
+    between DOS and Windows' display driver.
+  - The likely cause is the "Advanced Power Management support" device
+    the reporter had just added (Safe Mode, which does not load it,
+    starts). That is to be confirmed by removing it.
 - 0.3.17: the extra stack again, with a two-change patch
   (`data/firmware/seavgabios-extra-stack.patch`). The stack is turned on
   when the VGA BIOS starts, and a mode set only ever turns it off. So

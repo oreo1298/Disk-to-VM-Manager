@@ -97,6 +97,25 @@ class LaunchOptions:
 
 
 # Display devices whose preferred resolution (EDID) can be set.
+# Rehome's own builds of QEMU's VGA BIOS (SeaVGABIOS) without debug output, for
+# Windows 95/98/ME (docs/DECISIONS.md D43; scripts/build_vgabios.py makes them).
+VGA_BIOS = {"cirrus-vga": "vgabios-cirrus.bin", "VGA": "vgabios-stdvga.bin"}
+
+
+def vga_bios(device: str, family: str) -> Path | None:
+    """The VGA BIOS for ``device`` in a VM of OS ``family``, if not QEMU's own.
+
+    Windows 9x crashed when it shut down ("fatal exception 0D at C000:2007"): QEMU's
+    VGA BIOS prints a debug note for video functions it lacks, and on the stack
+    Windows lends it that note goes past the end of the 64 KB stack segment.
+    """
+    if family != "win9x" or device not in VGA_BIOS:
+        return None
+    from rehome import paths
+    rom = paths.data_files_dir() / "firmware" / VGA_BIOS[device]
+    return rom if rom.is_file() else None
+
+
 EDID_DEVICES = ("VGA", "virtio-vga", "virtio-vga-gl", "virtio-gpu-pci", "virtio-gpu-gl-pci",
                 "bochs-display")
 
@@ -322,6 +341,9 @@ class Builder:
                 props.append(f"vgamem_mb={vram}")
             if dev in ("cirrus-vga", "VGA", "vmware-svga", "qxl-vga", "virtio-vga", "virtio-vga-gl"):
                 props.append("id=video0")
+            rom = vga_bios(dev, self.cfg.os.family)
+            if rom:
+                props.append("romfile=" + str(rom).replace(",", ",,"))
             self.a("-device", ",".join(props))
         console = d.console
         if self.opts.headless:

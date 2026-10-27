@@ -364,3 +364,45 @@ def test_the_build_writes_the_same_password_files(monkeypatch):
     build._configure(G(), build.Options(output=Path("x"), maintenance_password="pw"))
     assert written["/" + runtime.PASSWORD_UNIT] == runtime.PASSWORD_UNIT_TEXT.encode()
     assert written["/" + runtime.ROOT_PROFILE] == runtime.ROOT_PROFILE_TEXT.encode()
+
+
+def test_a_page_that_fails_does_not_close_the_console(monkeypatch):
+    """Regression: "Save diagnostics" with one USB stick ended the console (exit 70)."""
+    answers = iter(["8", "x"])
+    logged, paused = [], []
+
+    def ask(prompt):
+        try:
+            return next(answers)
+        except StopIteration:
+            raise SystemExit(0)
+
+    def broken(conf):
+        raise OSError(30, "Read-only file system")
+    monkeypatch.setattr(console, "_ask", ask)
+    monkeypatch.setattr(console, "_pause", lambda text="": paused.append(text))
+    monkeypatch.setattr(console, "header", lambda *a: None)
+    monkeypatch.setattr(console, "_vm_state", lambda vm_id: "stopped")
+    monkeypatch.setattr(runtime, "load_config", lambda: {"appliance": {"vm": "x"}})
+    monkeypatch.setattr(console, "MENU", [("8", "Sound", broken)])
+    import syslog
+    monkeypatch.setattr(syslog, "syslog", lambda prio, msg: logged.append(msg))
+    with pytest.raises(SystemExit):
+        console.main()
+    assert paused and "\"Sound\" stopped with an error" in paused[0]
+    assert "Read-only file system" in paused[0]
+    assert any("OSError" in line for line in logged)          # the traceback, for diagnostics
+
+
+def test_a_read_only_usb_drive_is_refused_for_writing(monkeypatch, tmp_path):
+    ran = []
+    monkeypatch.setattr(console, "USB_MOUNT", str(tmp_path / "mnt"))
+    monkeypatch.setattr(console, "_run", lambda cmd, **kw: ran.append(cmd) or 0)
+    monkeypatch.setattr(console.os, "statvfs",
+                        lambda path: types.SimpleNamespace(f_flag=console.os.ST_RDONLY))
+    with pytest.raises(RehomeError, match="can only be read"):
+        with console._mounted("/dev/sdz1"):
+            pass
+    assert ran[-1][0] == "umount"                              # and it is unmounted again
+    with console._mounted("/dev/sdz1", readonly=True) as drive:  # reading is fine
+        assert drive == tmp_path / "mnt"

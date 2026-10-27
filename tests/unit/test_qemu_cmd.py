@@ -105,6 +105,29 @@ def test_pc_ide_layout_and_legacy_devices(vm, tmp_path):
     assert not any(d.startswith("virtio-serial") for d in devs)
 
 
+def test_windows_9x_gets_rehomes_vga_bios(vm, tmp_path, monkeypatch):
+    """Regression: Windows 98 crashed when it shut down ("A fatal exception 0D has occurred
+    at C000:00002007"), in QEMU's VGA BIOS; Rehome's build has no debug output (D43)."""
+    data = tmp_path / "data"
+    (data / "firmware").mkdir(parents=True)
+    rom = data / "firmware" / "vgabios-cirrus.bin"
+    rom.write_bytes(b"\x55\xaa")
+    monkeypatch.setenv("REHOME_DATA_DIR", str(data))
+    vm.machine.type = "pc"
+    vm.os.family = "win9x"
+    vm.display.device = "cirrus-vga"
+
+    def cirrus():
+        devs = values(argv_of(vm, tmp_path, accel="tcg").argv, "-device")
+        return next(d for d in devs if d.startswith("cirrus-vga"))
+    assert f"romfile={rom}" in cirrus()
+    vm.os.family = "windows"                # Windows XP and later keep QEMU's own
+    assert "romfile" not in cirrus()
+    vm.os.family = "win9x"
+    rom.unlink()                            # not built: QEMU's own
+    assert "romfile" not in cirrus()
+
+
 def test_q35_sata_ports(vm, tmp_path):
     vm.disks[0].bus = "sata"
     vm.cdroms.append(CdRom(id="cd0", bus="sata", file=""))

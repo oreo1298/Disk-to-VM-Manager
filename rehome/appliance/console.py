@@ -163,10 +163,25 @@ def main() -> int:
         for line in menu_lines([(k, t) for k, t, _f in MENU]):
             print(line)
         choice = _ask("\n  Choose: ").upper()
-        for key, _text, action in MENU:
+        for key, text, action in MENU:
             if choice == key:
-                action(conf)
+                try:
+                    action(conf)
+                except Exception as e:      # a page that fails must not close the console
+                    page_failed(text, e)
                 break
+
+
+def page_failed(page: str, e: Exception) -> None:
+    """Say what went wrong, and keep the details for "Save diagnostics" (the journal)."""
+    import syslog
+    import traceback
+    syslog.openlog("rehome-console")
+    for line in traceback.format_exception(e):
+        for part in line.rstrip().splitlines():
+            syslog.syslog(syslog.LOG_ERR, part)
+    _pause(f"\"{page}\" stopped with an error: {e}\n"
+           "The details are in the system log (Save diagnostics includes it). Press Enter.")
 
 
 def _vm_state(vm_id: str) -> str:
@@ -276,6 +291,11 @@ def _mounted(dev: str, readonly: bool = False):
         raise RehomeError("The USB drive could not be opened.",
                           fix="Check it on another computer, or use another drive.")
     try:
+        if not readonly and os.statvfs(USB_MOUNT).f_flag & os.ST_RDONLY:
+            # NTFS drives Windows did not close (Fast Startup, pulled out) open read-only.
+            raise RehomeError("The USB drive can only be read, not written to.",
+                              fix="If it was last used in Windows, use \"Safely Remove\" (or "
+                                  "turn Fast Startup off) there, or use another drive.")
         yield Path(USB_MOUNT)
     finally:
         _run(["umount", USB_MOUNT])

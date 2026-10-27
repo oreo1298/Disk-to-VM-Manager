@@ -34,6 +34,11 @@
     <control>pointing</control>
   </supports>
   <releases>
+    <release version="0.3.16" date="2026-10-27">
+      <description>
+        <p>Windows 95/98/ME: the VGA BIOS no longer keeps its stack in upper memory, which Windows uses for other things, so Windows 98 no longer hangs at a black screen when it shuts down.</p>
+      </description>
+    </release>
     <release version="0.3.15" date="2026-10-27">
       <description>
         <p>Diagnostics of a running VM say where its processor is (its mode, the code it runs, whether it is halted), to find out where a guest hangs.</p>

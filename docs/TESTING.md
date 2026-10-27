@@ -39,7 +39,7 @@ downloaded or committed.
 | `test_runner_freedos.py` | Full VM lifecycle on a real guest: start and stop, save and restore, pause and resume, reset, online checkpoints (with RAM), offline checkpoints, revert, start from a checkpoint, clone, export and import |
 | `test_import.py` | Identification and patching of the synthetic Windows 10/11/XP/98 and MS-DOS disks, rollback of the patches, Windows 11 getting Secure Boot and a TPM, linked and copy imports of FreeDOS that boot to the prompt, and that the source's SHA-256 is unchanged |
 | `test_dbus_display.py` | The console client against real QEMU: framebuffer, video mode changes, keyboard input reaching DOS, connection time |
-| `test_vgabios.py` | The VGA BIOS for Windows 9x (D43): a boot sector calls an unimplemented video function on a small stack, as Windows 98 does when it shuts down. QEMU's own SeaVGABIOS (any installed copy built with debug output) writes outside that stack segment; Rehome's writes nothing there and returns, also when started through Rehome as a Windows 98 VM |
+| `test_vgabios.py` | The VGA BIOS for Windows 9x (D43, D44): a boot sector sets text mode the old way and calls an unimplemented video function on a small stack, as Windows 98 does when it shuts down. QEMU's own SeaVGABIOS (any installed copy built with debug output) turns on its stack in upper memory and writes outside the caller's stack segment; Rehome's does neither and returns, also when started through Rehome as a Windows 98 VM |
 | `test_unattended_quick_create.py` | Quick Create and unattended-install media generation (answer files, ISO remastering) |
 
 ## Real-system boot tests (your images)

@@ -10,13 +10,18 @@
 ; QEMU's emulation (TCG) does not check segment limits, so the stores land just
 ; outside the segment instead, where this program looks for them.
 ;
-; It turns the VGA BIOS's extra stack off (as a mode set by Windows does), and
+; First it sets text mode 3 the old way (INT 10h AX=0003h), as Windows does when
+; it shuts down, and reports whether SeaVGABIOS turned on its "extra stack" (BDA
+; 40:B9h bit 6): a 512-byte stack in the E-segment, upper memory that Windows 9x
+; and EMM386 use for other things, so Windows 98 then hung at a black screen.
+;
+; Then it turns the VGA BIOS's extra stack off (as a mode set by Windows does), and
 ; calls INT 10h AX=1200h BL=36h ("video refresh control", a stub in SeaVGABIOS)
 ; with SS = 1000h and SP from 0400h down to 0040h. Each time it counts the bytes
 ; changed in the 256 bytes on either side of that stack segment (linear 0FF00h-
 ; 0FFFFh and 20000h-200FFh). It reports the total, and AL of the last call, on
 ; the screen and COM1:
-;   VGASTUB OUT=00000 AL=12
+;   VGASTUB OUT=00000 AL=12 XS=0
 ;
 ; Build: nasm -f bin -o vgastub.img vgastub.asm
 
@@ -33,6 +38,15 @@ start:  cli
         mov ss, ax
         mov sp, 0x7C00
         sti
+        mov ax, 0x0003                  ; text mode the old way, as at shutdown
+        int 0x10
+        mov ax, 0x40
+        mov es, ax
+        mov al, [es:0xB9]
+        shr al, 6
+        and al, 1
+        add al, '0'
+        mov [line + 27], al
         mov word [low_sp], 0x0400
 .try:   mov ax, PAST_SEG                ; canaries on both sides of the stack segment
         call fill
@@ -132,7 +146,7 @@ saved_sp  dw 0
 low_sp    dw 0
 changed   dw 0
 result_al db 0
-line      db "VGASTUB OUT=00000 AL=00", 13, 10, 0
+line      db "VGASTUB OUT=00000 AL=00 XS=?", 13, 10, 0
 
         times 510 - ($ - $$) db 0
         dw 0xAA55

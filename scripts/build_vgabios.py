@@ -4,10 +4,14 @@
 QEMU's VGA BIOS, SeaVGABIOS, prints a debug note for video functions it does not
 implement. Windows 95/98 calls one when it shuts down, on a stack with little
 room left, and the note's digits are stored past the end of the 64 KB stack
-segment: "A fatal exception 0D has occurred at C000:00002007" (D43). These are
-the SeaVGABIOS release Ubuntu 26.04 ships, built with QEMU's own configuration
-for each device and without the debug output (CONFIG_DEBUG_LEVEL=0). Rehome
-gives them to Windows 9x VMs (rehome/vm/qemu_cmd.py, vga_bios()).
+segment: "A fatal exception 0D has occurred at C000:00002007" (D43). And after
+an old-style mode set (as at shutdown) SeaVGABIOS switches to its own small
+stack in the E-segment, upper memory that Windows 9x and EMM386 use for other
+things: Windows 98 then hung at a black screen (D44). These are the
+SeaVGABIOS release Ubuntu 26.04 ships, built with QEMU's own configuration for
+each device, without the debug output (CONFIG_DEBUG_LEVEL=0) and without that
+stack (CONFIG_VGA_ALLOCATE_EXTRA_STACK off). Rehome gives them to Windows 9x VMs
+(rehome/vm/qemu_cmd.py, vga_bios()).
 
     git clone --branch rel-1.17.0 https://github.com/coreboot/seabios
     scripts/build_vgabios.py seabios
@@ -24,12 +28,13 @@ from pathlib import Path
 
 TAG = "rel-1.17.0"
 OUT = Path(__file__).resolve().parent.parent / "data" / "firmware"
-# QEMU's roms/config.vga-* for each file, plus no debug output.
+# QEMU's roms/config.vga-* for each file, plus no debug output and no extra stack.
 VARIANTS = {
     "vgabios-cirrus.bin": ["CONFIG_VGA_CIRRUS=y"],
     "vgabios-stdvga.bin": ["CONFIG_VGA_BOCHS=y"],
 }
-COMMON = ["CONFIG_BUILD_VGABIOS=y", "CONFIG_VGA_PCI=y", "CONFIG_DEBUG_LEVEL=0"]
+COMMON = ["CONFIG_BUILD_VGABIOS=y", "CONFIG_VGA_PCI=y", "CONFIG_DEBUG_LEVEL=0",
+          "# CONFIG_VGA_ALLOCATE_EXTRA_STACK is not set"]
 
 
 def run(argv: list[str], src: Path) -> str:

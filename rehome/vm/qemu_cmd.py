@@ -97,8 +97,9 @@ class LaunchOptions:
 
 
 # Display devices whose preferred resolution (EDID) can be set.
-# Rehome's own builds of QEMU's VGA BIOS (SeaVGABIOS) without debug output, for
-# Windows 95/98/ME (docs/DECISIONS.md D43; scripts/build_vgabios.py makes them).
+# Rehome's own builds of QEMU's VGA BIOS (SeaVGABIOS) without debug output and without
+# a stack in the E-segment, for Windows 95/98/ME (docs/DECISIONS.md D43, D44;
+# scripts/build_vgabios.py makes them).
 VGA_BIOS = {"cirrus-vga": "vgabios-cirrus.bin", "VGA": "vgabios-stdvga.bin"}
 
 
@@ -107,7 +108,9 @@ def vga_bios(device: str, family: str) -> Path | None:
 
     Windows 9x crashed when it shut down ("fatal exception 0D at C000:2007"): QEMU's
     VGA BIOS prints a debug note for video functions it lacks, and on the stack
-    Windows lends it that note goes past the end of the 64 KB stack segment.
+    Windows lends it that note goes past the end of the 64 KB stack segment. Then it
+    hung: after an old-style mode set, QEMU's VGA BIOS uses a stack in upper memory,
+    which Windows 9x maps for other uses.
     """
     if family != "win9x" or device not in VGA_BIOS:
         return None

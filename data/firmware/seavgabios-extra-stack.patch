@@ -1,0 +1,36 @@
+diff --git a/vgasrc/vgabios.c b/vgasrc/vgabios.c
+index 44fb26c..c3d83d7 100644
+--- a/vgasrc/vgabios.c
++++ b/vgasrc/vgabios.c
+@@ -281,12 +281,15 @@ vga_set_mode(int mode, int flags)
+         SET_BDA(video_mode, 0xff);
+     SET_BDA_EXT(vbe_mode, mode | (flags & MF_VBEFLAGS));
+     SET_BDA_EXT(vgamode_offset, (u32)vmode_g);
+-    if (CONFIG_VGA_ALLOCATE_EXTRA_STACK)
++    if (CONFIG_VGA_ALLOCATE_EXTRA_STACK && !(flags & MF_LEGACY))
+         // Disable extra stack if it appears a modern OS is in use.
+         // This works around bugs in some versions of Windows (Vista
+         // and possibly later) when the stack is in the e-segment.
+-        MASK_BDA_EXT(flags, BF_EXTRA_STACK
+-                     , (flags & MF_LEGACY) ? BF_EXTRA_STACK : 0);
++        // Rehome: and keep it disabled until the next boot (it is
++        // enabled in allocate_extra_stack()). Windows 95/98 sets text
++        // mode the legacy way when it shuts down, while its virtual
++        // machines still share the one extra stack, and hung there.
++        MASK_BDA_EXT(flags, BF_EXTRA_STACK, 0);
+     if (memmodel == MM_TEXT) {
+         SET_BDA(video_cols, width);
+         SET_BDA(video_rows, height-1);
+diff --git a/vgasrc/vgainit.c b/vgasrc/vgainit.c
+index d6a297e..796eb49 100644
+--- a/vgasrc/vgainit.c
++++ b/vgasrc/vgainit.c
+@@ -93,6 +93,8 @@ allocate_extra_stack(void)
+         return;
+     dprintf(1, "VGA stack allocated at %x\n", res);
+     SET_VGA(ExtraStackSeg, res >> 4);
++    // Rehome: used until a modern OS sets a mode (see vga_set_mode()).
++    MASK_BDA_EXT(flags, 0, BF_EXTRA_STACK);
+     extern void entry_10_extrastack(void);
+     SET_IVT(0x10, SEGOFF(get_global_seg(), (u32)entry_10_extrastack));
+     return;

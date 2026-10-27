@@ -33,9 +33,9 @@ def stub_disk(tmp_path_factory):
     return img
 
 
-def run_stub(disk: Path, device: str, rom: Path, work: Path) -> tuple[int, int, int]:
-    """(bytes the VGA BIOS wrote outside the caller's stack segment, AL it returned, whether
-    an old-style mode set turned on its extra stack in the E-segment)."""
+def run_stub(disk: Path, device: str, rom: Path, work: Path) -> tuple[int, int, str]:
+    """(bytes the VGA BIOS wrote outside the caller's stack segment, AL it returned, its
+    extra stack flag after a DOS-style mode set, a VESA one and a shutdown-style one)."""
     serial = work / f"serial-{device}-{rom.parent.name}.txt"
     proc = subprocess.Popen(["qemu-system-i386", "-machine", "pc", "-accel", "tcg", "-m", "32",
                              "-nodefaults", "-device", f"{device},romfile={rom}",
@@ -46,9 +46,9 @@ def run_stub(disk: Path, device: str, rom: Path, work: Path) -> tuple[int, int, 
         deadline = time.monotonic() + 120
         while time.monotonic() < deadline:
             text = serial.read_text(errors="replace") if serial.exists() else ""
-            m = re.search(r"VGASTUB OUT=(\d+) AL=([0-9A-F]{2}) XS=([01])", text)
+            m = re.search(r"VGASTUB OUT=(\d+) AL=([0-9A-F]{2}) XS=([01]{3})", text)
             if m:
-                return int(m.group(1)), int(m.group(2), 16), int(m.group(3))
+                return int(m.group(1)), int(m.group(2), 16), m.group(3)
             assert proc.poll() is None, proc.stdout.read().decode(errors="replace")
             time.sleep(0.5)
         raise AssertionError("the test program did not report")
@@ -64,20 +64,21 @@ def test_rehomes_vga_bios_stays_on_the_callers_stack(stub_disk, tmp_path, device
     if not rom.is_file():
         pytest.skip(f"{rom} is not built (scripts/build_vgabios.py)")
     assert b"stub %s:%d" not in rom.read_bytes()
-    assert run_stub(stub_disk, device, rom, tmp_path) == (0, 0x12, 0)
+    # The extra stack: on for DOS, off once an OS sets a mode its way, and off for good.
+    assert run_stub(stub_disk, device, rom, tmp_path) == (0, 0x12, "100")
 
 
 @pytest.mark.parametrize("device, name", [("cirrus-vga", "vgabios-cirrus.bin"),
                                           ("VGA", "vgabios-stdvga.bin")])
 def test_qemus_own_vga_bios_writes_outside_the_stack(stub_disk, tmp_path, device, name):
-    """The bugs: SeaVGABIOS as distributions ship it, with debug output (D43) and an extra
-    stack in the E-segment (D44)."""
+    """The bugs: SeaVGABIOS as distributions ship it, with debug output (D43), and turning
+    its extra stack back on with a shutdown-style mode set (D44)."""
     roms = [Path(d) / name for d in STOCK_DIRS if d and (Path(d) / name).is_file()]
     roms = [r for r in roms if b"stub %s:%d" in r.read_bytes()]
     if not roms:
         pytest.skip("no SeaVGABIOS with debug output is installed")
     outside, _al, extra_stack = run_stub(stub_disk, device, roms[0], tmp_path)
-    assert outside > 0 and extra_stack == 1
+    assert outside > 0 and extra_stack == "101"
 
 
 def test_a_windows_98_vm_starts_with_rehomes_vga_bios(stub_disk, tmp_path):
@@ -98,13 +99,13 @@ def test_a_windows_98_vm_starts_with_rehomes_vga_bios(stub_disk, tmp_path):
     try:
         deadline = time.monotonic() + 120
         while True:
-            m = re.search(r"VGASTUB OUT=(\d+) AL=([0-9A-F]{2}) XS=([01])",
+            m = re.search(r"VGASTUB OUT=(\d+) AL=([0-9A-F]{2}) XS=([01]{3})",
                           runner.screen_text(cfg))
             if m:
                 break
             assert time.monotonic() < deadline, runner.screen_text(cfg)
             time.sleep(1)
-        assert (int(m.group(1)), m.group(2), m.group(3)) == (0, "12", "0")
+        assert (int(m.group(1)), m.group(2), m.group(3)) == (0, "12", "100")
         log = (cfg.dir / "logs" / "qemu.log").read_text()
         assert f"romfile={rom}" in log
         # The diagnostics say where the processor is: the program ends with cli; hlt.

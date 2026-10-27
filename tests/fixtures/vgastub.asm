@@ -10,10 +10,13 @@
 ; QEMU's emulation (TCG) does not check segment limits, so the stores land just
 ; outside the segment instead, where this program looks for them.
 ;
-; First it sets text mode 3 the old way (INT 10h AX=0003h), as Windows does when
-; it shuts down, and reports whether SeaVGABIOS turned on its "extra stack" (BDA
-; 40:B9h bit 6): a 512-byte stack in the E-segment, upper memory that Windows 9x
-; and EMM386 use for other things, so Windows 98 then hung at a black screen.
+; First it reports SeaVGABIOS's "extra stack" flag (BDA 40:B9h bit 6), a 512-byte
+; stack for callers with small stacks, three times: after setting text mode 3 the
+; old way (INT 10h AX=0003h), as DOS does; after a VESA mode set (AX=4F02h), as
+; Windows' display driver does; and after text mode 3 the old way again, as
+; Windows does when it shuts down. SeaVGABIOS turns the stack back on then, while
+; Windows' virtual machines share it, and Windows 98 hung at a black screen.
+; Rehome's VGA BIOS keeps it off until the next boot: "XS=100" (QEMU's: "101").
 ;
 ; Then it turns the VGA BIOS's extra stack off (as a mode set by Windows does), and
 ; calls INT 10h AX=1200h BL=36h ("video refresh control", a stub in SeaVGABIOS)
@@ -21,7 +24,7 @@
 ; changed in the 256 bytes on either side of that stack segment (linear 0FF00h-
 ; 0FFFFh and 20000h-200FFh). It reports the total, and AL of the last call, on
 ; the screen and COM1:
-;   VGASTUB OUT=00000 AL=12 XS=0
+;   VGASTUB OUT=00000 AL=12 XS=100
 ;
 ; Build: nasm -f bin -o vgastub.img vgastub.asm
 
@@ -38,15 +41,17 @@ start:  cli
         mov ss, ax
         mov sp, 0x7C00
         sti
+        mov ax, 0x0003                  ; text mode the old way, as DOS
+        int 0x10
+        mov di, line + 27
+        call extra_stack
+        mov ax, 0x4F02                  ; VESA 640x480x256, as Windows' display driver
+        mov bx, 0x0101
+        int 0x10
+        call extra_stack
         mov ax, 0x0003                  ; text mode the old way, as at shutdown
         int 0x10
-        mov ax, 0x40
-        mov es, ax
-        mov al, [es:0xB9]
-        shr al, 6
-        and al, 1
-        add al, '0'
-        mov [line + 27], al
+        call extra_stack
         mov word [low_sp], 0x0400
 .try:   mov ax, PAST_SEG                ; canaries on both sides of the stack segment
         call fill
@@ -88,6 +93,19 @@ start:  cli
         cli
 .halt:  hlt
         jmp .halt
+
+extra_stack:                            ; '0'/'1' at ds:di (then di+1): BDA 40:B9 bit 6
+        push es
+        mov ax, 0x40
+        mov es, ax
+        mov al, [es:0xB9]
+        pop es
+        shr al, 6
+        and al, 1
+        add al, '0'
+        mov [di], al
+        inc di
+        ret
 
 fill:   mov es, ax                      ; 256 bytes of AAh at ax:0000
         xor di, di
@@ -146,7 +164,7 @@ saved_sp  dw 0
 low_sp    dw 0
 changed   dw 0
 result_al db 0
-line      db "VGASTUB OUT=00000 AL=00 XS=?", 13, 10, 0
+line      db "VGASTUB OUT=00000 AL=00 XS=???", 13, 10, 0
 
         times 510 - ($ - $$) db 0
         dw 0xAA55

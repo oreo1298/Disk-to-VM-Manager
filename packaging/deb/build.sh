@@ -59,8 +59,9 @@ Files: usr/share/rehome/firmware/vgabios-*.bin
 Copyright: 2009-2025 Kevin O'Connor and the SeaBIOS developers
  2001-2008 the LGPL VGABios developers Team
 License: LGPL-3.0-only
- SeaVGABIOS from SeaBIOS 1.17.0, built without debug output; where its source
- is: /usr/share/rehome/firmware/README.md.
+ SeaVGABIOS from SeaBIOS 1.17.0, built without debug output and with
+ /usr/share/rehome/firmware/seavgabios-extra-stack.patch; where its source is:
+ /usr/share/rehome/firmware/README.md.
  .
  On Debian systems, the complete text of the GNU Lesser General Public License
  version 3 can be found in "/usr/share/common-licenses/LGPL-3".

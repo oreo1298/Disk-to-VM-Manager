@@ -1192,7 +1192,7 @@ exception 0D has occurred at C000:00002007" when it shuts down.
     QEMU's register dump. On the test VM it reports the program's final
     `cli; hlt` as halted, interrupts off.
 
-## D44. Windows 9x VMs: the VGA BIOS stays off the E-segment
+## D44. Windows 9x VMs: the VGA BIOS's extra stack stays off once Windows runs
 
 Reported after D43 (0.3.15, KVM): Windows 98 no longer shows exception 0D
 when it shuts down, but stops at a black screen with a blinking cursor, and
@@ -1202,34 +1202,43 @@ the VM stays on.
   BIOS, interrupts off, at C000:1E56 and C000:1A22.
   - Those are SeaVGABIOS's scroll and teletype code: printing and
     scrolling over and over.
-  - SS=DS=ED6C with EBP=01C8 is SeaVGABIOS's own 512-byte "extra stack",
-    but ESP=35DE lies far outside it: the stack's contents had changed
-    underneath it.
-- SeaVGABIOS allocates that stack from the system BIOS's PMM "low memory".
-  In QEMU that is the E-segment: "VGA stack allocated at e8380" here,
-  ED6C0h on the reporter's computer.
-  - It switches to the stack after a mode set made the old way (INT 10h
-    AH=00h), as Windows does when it shuts down. While Windows' display
-    driver ran, a mode set made otherwise kept it off.
-  - The E-segment is upper memory. Windows 9x's memory manager and EMM386
-    map it for other uses (UMBs), so the stack is not the VGA BIOS's
-    while Windows runs. SeaBIOS's own comment mentions Windows Vista
-    misbehaving with a stack there.
-- Fix: Rehome's VGA BIOS files are now built with
-  `CONFIG_VGA_ALLOCATE_EXTRA_STACK` off, as well as without debug output.
-  - The VGA BIOS always runs on the caller's stack, as it already did for
-    Windows 98 while it ran.
-  - The extra stack exists for callers with very small stacks. Without
-    debug output the remaining paths are shallow, and the stub that
-    overflowed (D43) only returns.
+  - SS=DS=ED6C with EBP=01C8 is SeaVGABIOS's own 512-byte "extra stack"
+    ("VGA stack allocated at ..." in the E-segment, from the system
+    BIOS's PMM). ESP=35DE lies far outside it: the stack had been
+    trampled.
+- How SeaVGABIOS uses that stack: it is for callers with small stacks (DOS
+  programs).
+  - Every INT 10h call switches to the same block, with no protection
+    against a second call while one is running.
+  - A mode set made the old way (INT 10h AH=00h) turns it on.
+  - Any other mode set (VESA, as Windows' display driver does) turns it
+    off: "Disable extra stack if it appears a modern OS is in use".
+  - When Windows 98 shuts down, it sets text mode the old way. That turns
+    the stack back on while Windows still runs several virtual machines,
+    any of which can be inside the VGA BIOS when Windows switches between
+    them. The calls then share one stack.
+- 0.3.16 built the ROMs without the extra stack (`CONFIG_VGA_ALLOCATE_
+  EXTRA_STACK` off). That was wrong.
+  - On the reporter's VM (KVM) the DOS part of the boot (BIOS messages,
+    `AUTOEXEC.BAT`) then showed only every other character.
+  - DOS calls INT 10h on small stacks, and a deep call such as a mode
+    set overflows them. Under KVM the processor checks real-mode segment
+    limits and faults, so the call stops half-way.
+  - Emulation (TCG) checks no limits, which is why the tests here did
+    not show it: they read the text in video memory, not the screen.
+- 0.3.17: the extra stack again, with a two-change patch
+  (`data/firmware/seavgabios-extra-stack.patch`). The stack is turned on
+  when the VGA BIOS starts, and a mode set only ever turns it off. So
+  DOS, and Windows while it boots, keep it, and once Windows' display
+  driver has set a mode it stays off until the next boot (also for DOS
+  boxes in Windows).
 - Tested:
-  - `tests/fixtures/vgastub.asm` now first sets mode 3 the old way and
-    reports the extra-stack flag (BDA 40:B9h bit 6). It is on with QEMU's
-    stock 1.16.3 and Ubuntu 26.04's 1.17.0 and off with Rehome's, which
-    still write nothing outside the caller's stack.
-  - FreeDOS as a Windows 98-profile VM with Rehome's ROM: boots to the
-    prompt, switches to VESA 1024×768, back to text mode the old way, and
-    scrolls three directory listings.
+  - `tests/fixtures/vgastub.asm` reports the flag after a DOS-style mode
+    set, a VESA one and a shutdown-style one: QEMU's 1.16.3 "101", 0.3.14
+    "101", 0.3.16 "000", 0.3.17 "100". It still writes nothing outside
+    the caller's stack, for cirrus and standard VGA.
+  - FreeDOS as a Windows 98-profile VM: boots, switches to VESA and back,
+    and scrolls, checked on QEMU's screenshot as well as in video memory.
   - Windows 98 itself: to be confirmed on the reporter's VM.
 - Power-off: the reporter's Windows 98 has no "Advanced Power Management
   support" device, so it never asks the BIOS to turn the VM off.

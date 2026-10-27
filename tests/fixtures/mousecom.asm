@@ -5,8 +5,14 @@
 ; (INT 15h C2xx, so no DOS mouse driver may be loaded), doubles moves of more than
 ; 6 counts (Windows' MouseThreshold1), keeps the cursor on a 640x480 screen and
 ; shows it on the first text line until a key is pressed:
-;   MOUSE X=00320 Y=00240 N=00000 L=00000 R=00000
-; (N = packets received, L and R = presses of the left and right buttons)
+;   MOUSE X=00320 Y=00240 N=00000 L=00000 R=00000 B=00000
+; (N = packets received, L and R = presses of the left and right buttons, B = packets
+; out of step). The BIOS puts each three bytes together as a packet without checking
+; the first one's always-set bit 3 (SeaBIOS's process_mouse). In a slow, emulated
+; computer a late reply to the mouse reset can slip in, and every packet after it is
+; read one byte off: movement then turns into button presses and odd directions.
+; Such a packet is dropped and the mouse initialised again, which puts the BIOS back
+; in step, as Windows' own mouse driver resynchronises on that bit.
 ;
 ; Build: nasm -f bin -o MOUSE.COM mousecom.asm
 
@@ -16,27 +22,37 @@
 
 THRESHOLD equ 6
 
-start:  mov ax, 0xC205                  ; initialise, 3-byte packets
-        mov bh, 3
-        int 0x15
-        jc fail
-        push cs
-        pop es
-        mov ax, 0xC207                  ; handler at ES:BX
-        mov bx, handler
-        int 0x15
-        jc fail
-        mov ax, 0xC200                  ; enable
-        mov bh, 1
-        int 0x15
+start:  call init
         jc fail
 main:   call show
         mov ah, 1                       ; a key quits
         int 0x16
         jnz quit
-        sti
+        cmp byte [resync], 0
+        je .wait
+        mov ax, 0xC200                  ; out of step: disable, and initialise again
+        xor bh, bh
+        int 0x15
+        call init
+        mov byte [resync], 0
+.wait:  sti
         hlt
         jmp main
+
+init:   mov ax, 0xC205                  ; initialise, 3-byte packets (CF on failure)
+        mov bh, 3
+        int 0x15
+        jc .end
+        push cs
+        pop es
+        mov ax, 0xC207                  ; handler at ES:BX
+        mov bx, handler
+        int 0x15
+        jc .end
+        mov ax, 0xC200                  ; enable
+        mov bh, 1
+        int 0x15
+.end:   ret
 
 quit:   xor ah, ah
         int 0x16
@@ -62,6 +78,13 @@ handler:
         push cs
         pop ds
         mov ax, [bp+12]
+        test al, 0x08                   ; always set in a packet's first byte
+        jnz .sync
+        inc word [bad]
+        mov byte [resync], 1
+        jmp .done
+.sync:  cmp byte [resync], 0            ; already out of step: wait for the new start
+        jne .done
         mov dl, al                      ; buttons: bit 0 left, bit 1 right
         and dl, 3
         mov dh, [buttons]
@@ -96,7 +119,7 @@ handler:
         mov dx, 479
         call move
         inc word [packets]
-        pop ds
+.done:  pop ds
         popa
         pop bp
         retf
@@ -137,6 +160,9 @@ show:   push es
         mov ax, [rights]
         mov di, line + 40
         call decimal
+        mov ax, [bad]
+        mov di, line + 48
+        call decimal
         mov si, line
         xor di, di
         mov ah, 0x07
@@ -165,5 +191,7 @@ posy    dw 240
 packets dw 0
 lefts   dw 0
 rights  dw 0
+bad     dw 0
 buttons db 0
-line    db "MOUSE X=00000 Y=00000 N=00000 L=00000 R=00000", 0
+resync  db 0
+line    db "MOUSE X=00000 Y=00000 N=00000 L=00000 R=00000 B=00000", 0

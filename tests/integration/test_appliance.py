@@ -572,10 +572,10 @@ def test_a_vm_with_only_a_ps2_mouse_gets_the_computers_mouse(appliance, tmp_path
             while True:                       # until it stops changing
                 time.sleep(5 * SLOW)
                 _, text = sh.run(f"rehome screen-text {cfg.id}")
-                m = re.search(r"MOUSE X=(\d+) Y=(\d+) N=(\d+) L=(\d+) R=(\d+)", text)
-                now = tuple(int(v) for v in m.groups()) if m else None
+                m = re.search(r"MOUSE X=(\d+) Y=(\d+) N=(\d+) L=(\d+) R=(\d+)( B=\d+)?", text)
+                now = tuple(int(v) for v in m.groups()[:5]) if m else None
                 with open(tmp_path / "mouse-samples.txt", "a") as f:   # for failures
-                    f.write(f"{time.strftime('%H:%M:%S')} {now}\n")
+                    f.write(f"{time.strftime('%H:%M:%S')} {m.group(0) if m else None}\n")
                 if now and now == last:
                     return now
                 assert time.monotonic() < deadline, text
@@ -667,10 +667,7 @@ def test_a_vm_with_only_a_ps2_mouse_gets_the_computers_mouse(appliance, tmp_path
 
         x0, y0, _n, lefts, rights = where()      # the middle, and no button pressed yet
         assert (x0, y0, lefts, rights) == (320, 240, 0, 0), (x0, y0, lefts, rights)
-        touch("swipe -1200 600")
-        x, y, *_ = where()
-        assert x < x0 and y > y0, (x0, y0, x, y)
-        # No wall anywhere for the touchpad either: swipes reach every edge.
+        # Each edge in turn, so the directions are right too, and no wall on the way.
         touch("swipe -3000 0", 6)
         assert where()[0] == 0
         touch("swipe 3000 2200", 6)

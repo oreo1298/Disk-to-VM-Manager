@@ -23,6 +23,7 @@ from pathlib import Path
 
 import pytest
 
+from rehome.errors import RehomeError
 from tests.fixtures import freedos
 
 pytestmark = pytest.mark.slow
@@ -245,8 +246,12 @@ def appliance(tmp_path_factory):
             nic.model = "rtl8139"
         library.save(cfg)
         out = work / "appliance.qcow2"
-        build.build(cfg, build.Options(output=out, fmt="qcow2", maintenance_password=PASSWORD,
-                                       kernel_args="console=tty1 console=ttyS0,115200"))
+        try:
+            build.build(cfg, build.Options(output=out, fmt="qcow2",
+                                           maintenance_password=PASSWORD,
+                                           kernel_args="console=tty1 console=ttyS0,115200"))
+        except RehomeError as e:            # the build's log is in the details
+            pytest.fail(f"{e.message}\n{e.details}")
         yield cfg, out
     finally:
         env.undo()

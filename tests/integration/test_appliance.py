@@ -574,6 +574,8 @@ def test_a_vm_with_only_a_ps2_mouse_gets_the_computers_mouse(appliance, tmp_path
                 _, text = sh.run(f"rehome screen-text {cfg.id}")
                 m = re.search(r"MOUSE X=(\d+) Y=(\d+) N=(\d+) L=(\d+) R=(\d+)", text)
                 now = tuple(int(v) for v in m.groups()) if m else None
+                with open(tmp_path / "mouse-samples.txt", "a") as f:   # for failures
+                    f.write(f"{time.strftime('%H:%M:%S')} {now}\n")
                 if now and now == last:
                     return now
                 assert time.monotonic() < deadline, text
@@ -614,6 +616,26 @@ def test_a_vm_with_only_a_ps2_mouse_gets_the_computers_mouse(appliance, tmp_path
               f"{len(bright)} with a PS/2 mouse")
         assert not bright, bright[:10]
 
+        # The touchpad alone from here. The outer machine's PS/2 mouse leaves (its driver is
+        # unbound, so the mouse agent takes it from the VM), and MOUSE.COM starts again, with
+        # its counters at zero and the BIOS's packet assembly reset. Under nested emulation
+        # the outer mouse's button counts cannot be trusted: one run counted 5518 right-button
+        # presses during the moves above, with no button pressed.
+        rc, out = sh.run("echo -n serio1 > /sys/bus/serio/drivers/psmouse/unbind")
+        assert rc == 0, out
+        deadline = time.monotonic() + 120 * SLOW
+        while True:
+            _, gone = sh.run("journalctl -b --no-pager | grep 'mouse event.* removed from the VM' "
+                             "|| true")
+            if "removed" in gone:
+                break
+            assert time.monotonic() < deadline, sh.run("journalctl -b --no-pager | tail -30")[1]
+            time.sleep(5)
+        sh.run(f"rehome send-keys {cfg.id} ret")      # MOUSE.COM ends on a key
+        time.sleep(10 * SLOW)
+        sh.run(f"rehome type {cfg.id} mouse && rehome send-keys {cfg.id} ret")
+        assert where()[:2] == (320, 240)
+
         # A touchpad: uinput makes one (the outer machine has none), with real multi-touch
         # events, so libinput handles it as a laptop's.
         _put(sh, (Path(__file__).resolve().parents[1] / "fixtures" / "uinput_touchpad.py")
@@ -643,7 +665,8 @@ def test_a_vm_with_only_a_ps2_mouse_gets_the_computers_mouse(appliance, tmp_path
                     assert time.monotonic() < deadline, sh.run("cat /run/tp.log")[1]
                     time.sleep(1)
 
-        x0, y0, _n, lefts, rights = where()      # the mouse left it at the top
+        x0, y0, _n, lefts, rights = where()      # the middle, and no button pressed yet
+        assert (x0, y0, lefts, rights) == (320, 240, 0, 0), (x0, y0, lefts, rights)
         touch("swipe -1200 600")
         x, y, *_ = where()
         assert x < x0 and y > y0, (x0, y0, x, y)

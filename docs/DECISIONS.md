@@ -1391,8 +1391,31 @@ Reported after D41: in a Windows 98 appliance on a laptop, the touchpad still
   - The guest draws its own cursor. VMs with a tablet keep the visible
     pointer.
   - Tested: a unit test reads the cursor files as libXcursor does. The
-    appliance test checks cage's environment and that a screenshot shows
-    no cursor in the middle of the screen (run pending at this commit).
+    appliance test checks cage's environment and a screenshot of the middle
+    of the screen. That spot had 43 bright pixels (cage's arrow) with a
+    tablet VM and 0 with a PS/2 mouse; the screenshots match.
+- Testing the touchpad again took several runs. None of them found a fault
+  in the touchpad path, only in the test's own setup under nested
+  emulation. Traces showed the agent sending exactly libinput's movement:
+  the agent's own trace (`REHOME_TOUCHPAD_TRACE`) and QEMU's
+  `input_event_rel` and `ps2_mouse_send_packet` events.
+  - MOUSE.COM read packets through the BIOS. SeaBIOS puts three bytes
+    together without checking the first byte's always-set bit 3. A late
+    reply to a mouse reset put it one byte off, so movement turned into
+    right-button presses and odd directions. MOUSE.COM now drops such
+    packets and initialises the mouse again, as Windows' driver
+    resynchronises (B= on its line).
+  - QEMU's PS/2 queue holds five packets. Movement that does not fit
+    while the guest reads stays in QEMU until the next input event, also
+    across the guest turning the mouse off and on. In the test, the outer
+    mouse's moves arrived late or came out with the touchpad's first move.
+    Every reading now first sends empty moves (HMP `mouse_move 0 0`) until
+    QEMU sends a packet with nothing in it. On a real computer Windows
+    reads the mouse long before the queue fills.
+  - Passed (72 min without KVM). A horizontal swipe stays level. Swipes
+    reach the left edge, the bottom right and the top. A tap counts one
+    left click and a two-finger tap one right click. No packet was out of
+    step.
 
 ## D47. Windows 9x VMs: a VGA BIOS without its extra stack
 

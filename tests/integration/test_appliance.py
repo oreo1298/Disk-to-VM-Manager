@@ -623,6 +623,13 @@ def test_a_vm_with_only_a_ps2_mouse_gets_the_computers_mouse(appliance, tmp_path
         # its counters at zero and the BIOS's packet assembly reset. Under nested emulation
         # the outer mouse's button counts cannot be trusted: one run counted 5518 right-button
         # presses during the moves above, with no button pressed.
+        # QEMU's own record of the mouse input it gets (with its source: -1 for QMP, the
+        # touchpad agent; 0 for QEMU's window) and the PS/2 packets it sends, for failures.
+        _put(sh, (Path(__file__).resolve().parents[1] / "fixtures" / "qemu_hmp.py").read_text(),
+             "/root/qemu_hmp.py")
+        rc, out = sh.run("python3 /root/qemu_hmp.py 'trace-event input_event_rel on' "
+                         "'trace-event input_event_btn on' 'trace-event ps2_mouse_send_packet on'")
+        assert rc == 0, out
         rc, out = sh.run("echo -n serio1 > /sys/bus/serio/drivers/psmouse/unbind")
         assert rc == 0, out
         deadline = time.monotonic() + 120 * SLOW
@@ -671,7 +678,8 @@ def test_a_vm_with_only_a_ps2_mouse_gets_the_computers_mouse(appliance, tmp_path
         assert (x0, y0, lefts, rights) == (320, 240, 0, 0), (x0, y0, lefts, rights)
 
         def trace():
-            return sh.run("tail -c 3000 /tmp/tp-trace.jsonl")[1]
+            return sh.run("tail -c 2000 /tmp/tp-trace.jsonl; grep -a 'input_event\\|ps2_mouse' "
+                          "/var/lib/rehome/data/vms/*/logs/qemu.log | tail -40")[1]
         # A swipe to the left moves left only.
         touch("swipe -1200 0")
         x, y, *_ = where()

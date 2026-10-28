@@ -567,8 +567,32 @@ def test_a_vm_with_only_a_ps2_mouse_gets_the_computers_mouse(appliance, tmp_path
             assert time.monotonic() < deadline, text
             time.sleep(10)
         sh.run(f"rehome type {cfg.id} mouse && rehome send-keys {cfg.id} ret")
+        # QEMU's own record of the mouse input it gets (with its source: -1 for QMP, the
+        # touchpad agent; 0 for QEMU's window) and the PS/2 packets it sends.
+        _put(sh, (Path(__file__).resolve().parents[1] / "fixtures" / "qemu_hmp.py").read_text(),
+             "/root/qemu_hmp.py")
+        rc, out = sh.run("python3 /root/qemu_hmp.py 'trace-event input_event_rel on' "
+                         "'trace-event input_event_btn on' 'trace-event ps2_mouse_send_packet on'")
+        assert rc == 0, out
+        packets = "grep -a ps2_mouse_send_packet /var/lib/rehome/data/vms/*/logs/qemu.log"
+
+        def flush():
+            """QEMU's PS/2 queue holds five packets. What does not fit while this slow,
+            nested guest reads stays in QEMU until the next input event, also across the
+            guest turning the mouse off and on: moves came out late, or with the touchpad's
+            first move. Empty moves until QEMU sends a packet with nothing in it."""
+            deadline = time.monotonic() + 300 * SLOW
+            while True:
+                _, count = sh.run(f"{packets} | wc -l")
+                sh.run("python3 /root/qemu_hmp.py 'mouse_move 0 0'")
+                time.sleep(2 * SLOW)
+                _, new = sh.run(f"{packets} | tail -n +{int(count.strip() or 0) + 1}")
+                if new.strip() and " x 0 y 0 " in new.strip().splitlines()[-1]:
+                    return
+                assert time.monotonic() < deadline, new
 
         def where():
+            flush()
             deadline = time.monotonic() + 120 * SLOW
             last = None
             while True:                       # until it stops changing
@@ -623,26 +647,6 @@ def test_a_vm_with_only_a_ps2_mouse_gets_the_computers_mouse(appliance, tmp_path
         # its counters at zero and the BIOS's packet assembly reset. Under nested emulation
         # the outer mouse's button counts cannot be trusted: one run counted 5518 right-button
         # presses during the moves above, with no button pressed.
-        # QEMU's own record of the mouse input it gets (with its source: -1 for QMP, the
-        # touchpad agent; 0 for QEMU's window) and the PS/2 packets it sends, for failures.
-        _put(sh, (Path(__file__).resolve().parents[1] / "fixtures" / "qemu_hmp.py").read_text(),
-             "/root/qemu_hmp.py")
-        rc, out = sh.run("python3 /root/qemu_hmp.py 'trace-event input_event_rel on' "
-                         "'trace-event input_event_btn on' 'trace-event ps2_mouse_send_packet on'")
-        assert rc == 0, out
-        # QEMU's PS/2 queue holds five packets. What did not fit while this slow, nested
-        # guest read the moves above stays in QEMU until the next input event, also across
-        # the guest turning the mouse off and on, and came out with the touchpad's first
-        # move. Empty it while MOUSE.COM still reads: empty moves until QEMU's packets are 0.
-        deadline = time.monotonic() + 300 * SLOW
-        while True:
-            sh.run("python3 /root/qemu_hmp.py 'mouse_move 0 0'")
-            time.sleep(2 * SLOW)
-            _, last = sh.run("grep -a ps2_mouse_send_packet /var/lib/rehome/data/vms/*/logs/"
-                             "qemu.log | tail -1")
-            if " x 0 y 0 " in last:
-                break
-            assert time.monotonic() < deadline, last
         rc, out = sh.run("echo -n serio1 > /sys/bus/serio/drivers/psmouse/unbind")
         assert rc == 0, out
         deadline = time.monotonic() + 120 * SLOW

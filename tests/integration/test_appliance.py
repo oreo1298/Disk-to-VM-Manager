@@ -630,6 +630,19 @@ def test_a_vm_with_only_a_ps2_mouse_gets_the_computers_mouse(appliance, tmp_path
         rc, out = sh.run("python3 /root/qemu_hmp.py 'trace-event input_event_rel on' "
                          "'trace-event input_event_btn on' 'trace-event ps2_mouse_send_packet on'")
         assert rc == 0, out
+        # QEMU's PS/2 queue holds five packets. What did not fit while this slow, nested
+        # guest read the moves above stays in QEMU until the next input event, also across
+        # the guest turning the mouse off and on, and came out with the touchpad's first
+        # move. Empty it while MOUSE.COM still reads: empty moves until QEMU's packets are 0.
+        deadline = time.monotonic() + 300 * SLOW
+        while True:
+            sh.run("python3 /root/qemu_hmp.py 'mouse_move 0 0'")
+            time.sleep(2 * SLOW)
+            _, last = sh.run("grep -a ps2_mouse_send_packet /var/lib/rehome/data/vms/*/logs/"
+                             "qemu.log | tail -1")
+            if " x 0 y 0 " in last:
+                break
+            assert time.monotonic() < deadline, last
         rc, out = sh.run("echo -n serio1 > /sys/bus/serio/drivers/psmouse/unbind")
         assert rc == 0, out
         deadline = time.monotonic() + 120 * SLOW

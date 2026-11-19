@@ -16,7 +16,7 @@ Rehome is a Linux desktop app for QEMU/KVM. It does two jobs:
 
 Everything the GUI does is also available on the command line (`rehome --help`).
 
-> **Status: 0.3.23, early release.** The engine, CLI and GUI work, and they are
+> **Status: 0.3.24, early release.** The engine, CLI and GUI work, and they are
 > tested on synthetic disks and on real FreeDOS, ReactOS and Ubuntu guests. Real
 > Windows and 9x installations were not tested yet; see
 > [What has been tested](#what-has-been-tested).
@@ -222,6 +222,10 @@ chosen per operating system from profiles in `data/profiles/`:
     stops at "It's now safe to turn off your computer". Rehome watches the
     VM's processor and turns the VM off a few seconds after Windows has
     stopped it for good.
+  - Under KVM, Windows 98's shutdown ends differently: QEMU does not
+    write-protect the BIOS area there, and Windows overwrites the VGA BIOS
+    with text after it has saved everything, then hangs at a black screen.
+    The watcher recognises that state and turns the VM off too.
 - **BSD**: chooses suitable hardware and reports what was found.
 
 Rehome warns about two cases and decides nothing for you:
@@ -403,7 +407,8 @@ scripts. Add `-v` to any command for technical details.
 | Windows asks to be activated again | Expected: the virtual hardware differs from the PC. Reactivate with your own licence; Rehome never bypasses activation. |
 | Old Windows (9x/2000/XP) runs too fast, hangs or crashes on start | Use the profile's defaults: emulation (TCG) for 9x, at most 512 MB of RAM, a Pentium-class CPU model. |
 | The console stays black | The guest may have switched its display off. Press a key in the console, or check **Logs**. `rehome screenshot VM x.png` shows what QEMU itself sees. |
-| Windows 98/Me hangs, crashes or shows garbage under KVM but works under emulation (for example a black screen with a blinking cursor at shutdown) | The TLB invalidation bug on newer processors. Update Rehome, turn the VM off and run `rehome patch run VM --only win9x.tlb`. Rebuild an appliance afterwards: it carries a copy of the disk. |
+| Windows 98/Me hangs, crashes or shows garbage under KVM but works under emulation | The TLB invalidation bug on newer processors. Update Rehome, turn the VM off and run `rehome patch run VM --only win9x.tlb`. Rebuild an appliance afterwards: it carries a copy of the disk. |
+| Windows 98 stays at a black screen with a blinking cursor after shutting down under KVM | QEMU does not write-protect the VGA BIOS under KVM, and Windows overwrites it at the end of its shutdown. Rehome 0.3.24 and later turn the VM off a few seconds later; Windows has saved everything by then. |
 | Windows 95/98: "While initializing device NDIS: Windows protection error" | The CPU is too fast for a timing loop in NDIS.VXD, even under emulation on a fast computer. Update Rehome, turn the VM off and run `rehome patch run VM --only win9x.cpu_speed`. Rebuild an appliance afterwards: it carries a copy of the disk. |
 | Windows 95/98 stays at "It's now safe to turn off your computer" | Rehome 0.3.18 and later turn the VM off a few seconds after that screen appears. If it stays on, send `rehome diagnostics VM` from that screen: it shows where the processor stopped (and the VM's `watch.log`). Adding "Advanced Power Management support" in Windows is not needed, and it can hang Windows 98 while it boots. |
 | The mouse cursor does not move in DOS or Windows 9x (Rehome 0.3.8 and older) | Update Rehome. Older versions treated a PS/2 mouse as absolute, so the cursor never moved. |

@@ -1618,3 +1618,31 @@ would like KVM for its speed.
     off a VM in this exact state. That is safe only if Windows has
     already flushed its disks, i.e. ScanDisk does not run on the next
     start.
+- Reported: the full-screen MS-DOS session does not help on the reporter's
+  VM; the shutdown still hangs. After turning the VM off from the hang,
+  ScanDisk does not run on the next start. So Windows has flushed its disks
+  and marked them clean before it overwrites the VGA BIOS.
+- So in 0.3.24 the watcher (D45) also turns the VM off when this state
+  lasts:
+  - The processor is in real or V86 mode with interrupts off.
+  - It runs inside the VGA BIOS's segment (linear C0000-CFFFF).
+  - Both hold for 3 samples in a row (about 6 seconds).
+  - The VGA BIOS's `55 AA` header at physical C0000 is gone. The watcher
+    reads it with `xp` only once the first three hold, so a running
+    Windows costs no extra monitor commands.
+- The VM cannot leave that state: its interrupts are off and it runs text
+  cells. Turning it off loses nothing the guest could still have written.
+  An intact header, a reply without bytes, or a processor anywhere else
+  leaves the VM alone. A long video mode set with the VGA BIOS in place is
+  never turned off.
+- Tests:
+  - Unit tests use the reporter's registers (V86 mode at C000, EFL=00020046)
+    and QEMU's `xp` replies, intact and overwritten.
+  - An integration test runs a boot sector under TCG that does what Windows
+    does under KVM. It unlocks the shadow through the i440FX's PAM registers,
+    fills C0000-CFFFF with `0x0720` and jumps there with interrupts off.
+  - 0.3.23's watcher leaves that VM running at "real mode at C000:…,
+    running, interrupts off", as on the reporter's VM. 0.3.24's turns it off
+    within seconds.
+- Emulation stays the default for Windows 98, with KVM a choice (D48).
+  Under emulation Windows ends its shutdown the ordinary way.

@@ -14,6 +14,13 @@ the same instruction, several times in a row, while the VM runs (a paused VM is
 not judged). Nothing but a reset changes that. Windows' own error screens run in
 protected mode, and a DOS prompt has interrupts on, so neither turns the VM off.
 
+Under KVM, Windows 98 can end its shutdown another way (D49): QEMU leaves the
+BIOS shadow writable there, Windows overwrites the VGA BIOS with text, and the
+processor, in the middle of a video mode set, runs that text with interrupts
+off forever. Windows has saved everything by then. So a processor that runs in
+the VGA BIOS's segment with interrupts off, several times in a row, while the
+VGA BIOS's 55 AA header is gone, is stopped for good too.
+
 The VM's logs/watch.log, which diagnostics include, gets a line when the
 processor enters or leaves real mode or turns interrupts off there, with a few
 lines of detail while they are off, and how it ended. Not every sample: in a
@@ -37,6 +44,8 @@ DETAIL = 10             # places written each time interrupts are off in real mo
 # I/O base SeaBIOS gives them) turn that into a shutdown by the guest. SeaBIOS's own
 # APM power-off writes the same.
 POWER_OFF = "o /w 0x604 0x2000"
+VGA_BIOS = 0xC0000              # the VGA BIOS's segment (C000), 64 KB
+READ_VGA_BIOS = "xp /2xb 0xc0000"
 
 
 def parse(dump: str) -> dict | None:
@@ -76,6 +85,34 @@ def stopped_for_good(samples: list[dict]) -> bool:
     halted = all(s["halted"] for s in last)
     same_place = len({(s["cs"], s["eip"]) for s in last}) == 1
     return halted or same_place
+
+
+def in_vga_bios(samples: list[dict]) -> bool:
+    """The last CONFIRM samples run in the VGA BIOS's segment, in real or V86 mode,
+    with interrupts off."""
+    last = samples[-CONFIRM:]
+    if len(last) < CONFIRM:
+        return False
+    for s in last:
+        if s["interrupts"] or not (s["real"] or s["v86"]):
+            return False
+        if not VGA_BIOS <= s["cs"] * 16 + s["eip"] < VGA_BIOS + 0x10000:
+            return False
+    return True
+
+
+def vga_bios_intact(reply: str) -> bool:
+    """QEMU's `xp` of C0000 shows the VGA BIOS's header, 55 AA. A reply without
+    bytes counts as intact: nothing is turned off on a guess."""
+    data = [int(b, 16) for b in re.findall(r"0x([0-9a-fA-F]{2})\b", reply.partition(":")[2])]
+    return len(data) < 2 or data[:2] == [0x55, 0xAA]
+
+
+def _power_off(q, log) -> None:
+    reply = q.hmp(POWER_OFF)
+    if reply.strip():                   # this QEMU cannot write I/O ports from its monitor
+        log(f"port write failed ({reply.strip()}); quitting QEMU instead")
+        q.execute("quit")
 
 
 def watch(qmp_path: str, log, interval: float = INTERVAL, wait: float = 120.0) -> str:
@@ -126,11 +163,18 @@ def watch(qmp_path: str, log, interval: float = INTERVAL, wait: float = 120.0) -
             samples = (samples + [s])[-CONFIRM:]
             if stopped_for_good(samples):
                 log(f"the guest has stopped for good ({text}): turning the VM off")
-                reply = q.hmp(POWER_OFF)
-                if reply.strip():           # this QEMU cannot write I/O ports from its monitor
-                    log(f"port write failed ({reply.strip()}); quitting QEMU instead")
-                    q.execute("quit")
+                _power_off(q, log)
                 return "off"
+            if in_vga_bios(samples):
+                try:
+                    intact = vga_bios_intact(q.hmp(READ_VGA_BIOS))
+                except RehomeError:
+                    return "gone"
+                if not intact:
+                    log(f"the VGA BIOS has been overwritten and the processor runs what "
+                        f"replaced it, with interrupts off ({text}): turning the VM off")
+                    _power_off(q, log)
+                    return "off"
             time.sleep(interval)
     finally:
         q.close()

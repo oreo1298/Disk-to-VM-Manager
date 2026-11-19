@@ -1000,8 +1000,8 @@ NDIS: Windows protection error".
     which stay untouched.
 - Not done: IOS and NTKERN inside `VMM32.VXD`. They are compressed (W3/W4),
   and patcher9x unpacks them; they passed on the reported computer. The
-  TLB invalidation bug fix (also in patcher9x) is not ported either; it
-  concerns KVM on new CPUs, while Rehome emulates Windows 9x.
+  TLB invalidation bug fix (also in patcher9x) was not ported at first; it
+  concerns KVM on new CPUs, while Rehome emulates Windows 9x. D48 ports it.
 - Alternative considered: `-icount shift=N` makes the emulated CPU's speed
   fixed. Windows 9x never idles the CPU, so on a computer slower than the
   fixed speed the guest's clock and sound would run slow. Also, `-icount`
@@ -1472,3 +1472,79 @@ screen, showed what had gone wrong:
     and back, and prints and scrolls a full screen of `dir` output with no
     character missing.
   - Windows 98 itself: to be confirmed on the reporter's VM.
+
+## D48. Windows 98/Me under KVM: patcher9x's TLB invalidation fix
+
+Reported after D47: under emulation (TCG), Windows 98 shuts down and Rehome
+turns the VM off. Under KVM it still hangs at a black screen, and the user
+would like KVM for its speed.
+
+- The KVM diagnostics (0.3.21) show the same state as 0.3.15's and
+  0.3.19's.
+  - The processor runs through blank text cells (`20 07`) where the VGA
+    BIOS's code should be (C000:1ACE), and CR2 is BF000.
+  - This time there is no extra stack: SS=14B9, ESP=D688, Windows' own
+    stack with plenty of room.
+  - All three reports were under KVM. So neither the debug output (D43)
+    nor the extra stack (D44, D47) was the root cause. Something that only
+    KVM does overwrote the memory Windows maps at C000.
+- That is the Windows 98/Me "TLB invalidation bug" (Henry Wong,
+  stuffedcow.net, 2015), which the profile's note already named.
+  - VMM.VXD's FlushMappedCacheBlock changes page table entries without
+    flushing the processor's cached translations.
+  - AMD Zen 2, Intel 11th-generation Core and later processors keep stale
+    ones longer. With hardware virtualization Windows then writes into the
+    wrong pages, here a 32 KB text-screen clear into the pages behind
+    C000.
+  - QEMU's emulation keeps no such cache, so TCG never showed it.
+- 0.3.22 ports patcher9x's fix (MIT): new patch `win9x.tlb` in the
+  Windows 98 profile, which also covers Me.
+  - The fix reloads CR3 in FlushMappedCacheBlock, which flushes the
+    translations.
+  - Patterns (`win9x_tlb_data.py`, generated from patcher9x's
+    `vmm_patch*.h`) cover Windows 98 and 98 SE, their VMM.VXD updates
+    (Q242161, Q288430) and Windows Me (two blocks 16148 bytes apart).
+    patcher9x's smaller "simple" fix is used for a VMM.VXD the full one
+    does not match. A VMM.VXD fixed by an older patcher9x is brought up to
+    the current fix.
+  - Matching uses D40's code: relocated bytes are left out, and only the
+    bytes the fix changes are written.
+- VMM.VXD lives inside VMM32.VXD (`win9x_vmm32.py`).
+  - VMM32.VXD is a DOS program followed by a W3 library (uncompressed) or
+    a W4 one: W3 compressed in 8 KB chunks with DoubleSpace's LZ codes,
+    where a chunk that does not shrink is stored as it is.
+  - Rehome decompresses it, takes VMM out as a VxD file of its own and
+    saves the fixed copy as `SYSTEM\VMM32\VMM.VXD`. Windows loads that
+    file in place of the copy in VMM32.VXD; this is patcher9x's default
+    for an installed system.
+  - The standalone file is patcher9x's DOS stub and the LE header, with
+    its two offsets from the top of the file (data pages, non-resident
+    names) counted from the new file's start, then the body.
+  - A VMM.VXD already in `SYSTEM\VMM32` is patched where it is.
+    VMM32.VXD is never changed.
+- Emulation stays the profile's default until the fix is confirmed under
+  KVM on the reporter's computer. The profile's note says KVM can now be
+  chosen.
+- Tested:
+  - The DoubleSpace decoder follows patcher9x's `ds_decompress.c`. The
+    unit tests check it against an encoder written from Clive Turvey's
+    description of the format (VxDLib), which covers every code: raw
+    bytes with and without the high bit, copies from all three distance
+    ranges, the longest copy, sector breaks and the end. Damaged chunks are
+    refused.
+  - W3 and W4 libraries built from synthetic LE files give the same VMM
+    file, laid out as patcher9x lays it out.
+  - The fix on synthetic VMM code, with relocated bytes random: applied
+    once, then reported as already applied. The simple fix is used when
+    the full one does not match. Windows Me needs both blocks at their
+    distance. Windows 95 is left alone.
+  - Against patcher9x's own dumps of VMM's code before and after its fix
+    (`vmm/original*.bin`, `patched*.bin`; not added to Rehome, being
+    Microsoft's code), Rehome's result is the same byte for byte for both
+    Windows 98 variants, Windows Me and the upgrades from older patcher9x
+    fixes.
+  - `test_windows98_tlb_fix`: an import of a Windows 98 FE disk whose
+    VMM32.VXD is a W4 library writes a fixed `SYSTEM\VMM32\VMM.VXD`.
+    VMM32.VXD and the source are unchanged.
+  - Not run with Microsoft's real VMM32.VXD (none here). Windows 98 itself
+    under KVM is to be confirmed on the reporter's VM.

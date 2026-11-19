@@ -235,6 +235,38 @@ def test_windows98_fast_cpu_fix(images):
     assert sha256(src) == before
 
 
+def test_windows98_tlb_fix(images):
+    """Regression: under KVM on a new CPU, Windows 98 overwrote the VGA BIOS's code with
+    text-screen cells and hung when it shut down (the TLB invalidation bug, D48).
+    VMM.VXD comes out of the compressed VMM32.VXD, gets patcher9x's fix, and is saved
+    as SYSTEM\\VMM32\\VMM.VXD; VMM32.VXD itself is left as it is."""
+    from rehome import importer
+    from rehome.inspect.gfs import Drive, session
+    from rehome.patch import win9x_speed, win9x_vmm32
+    from rehome.patch.win9x_tlb_data import WIN98
+    from tests.unit.test_win9x_speed import embed
+    from tests.unit.test_win9x_tlb import sample, w3_library, w4_library
+    vmm, _ = embed(WIN98[0], seed=21, at=6000)
+    library = w4_library(w3_library({"VMM": bytes(vmm), "VCACHE": sample(6, 7000)}))
+    src = W.build_win9x(str(images / "win98fe-tlb.img"), kernel32=(4, 10, 1998, 0), extra={
+        "/WINDOWS/SYSTEM/VMM32.VXD": library})
+    before = sha256(src)
+    a = importer.analyze([src])
+    cfg = importer.run(a, importer.ImportOptions())
+    entry = next(json.loads(line) for line in (cfg.dir / "logs" / "patch.log").read_text()
+                 .splitlines() if '"win9x.tlb"' in line)
+    assert entry["status"] == "applied", entry
+    with session([Drive(str(cfg.resolve(cfg.disks[0].file)), "qcow2")]) as g:
+        g.mount_ro("/dev/sda1", "/")
+        fixed = g.read_file("/WINDOWS/SYSTEM/VMM32/VMM.VXD")
+        kept = g.read_file("/WINDOWS/SYSTEM/VMM32.VXD")
+    desc, orig, check, new, modif = WIN98[0]
+    assert kept == library
+    assert fixed[:2] == b"MZ" and fixed[len(win9x_vmm32.DOS_STUB):][:2] == b"LE"
+    assert win9x_speed.find(fixed, new, check) >= 0 and win9x_speed.find(fixed, orig, check) < 0
+    assert sha256(src) == before
+
+
 def test_windows98_and_msdos(images):
     from rehome import importer
     src98 = W.build_win9x(str(images / "win98.img"))

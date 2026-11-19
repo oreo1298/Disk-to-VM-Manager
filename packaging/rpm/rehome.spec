@@ -11,7 +11,7 @@
 %global __brp_python_bytecompile %{nil}
 
 Name:           rehome
-Version:        0.3.21
+Version:        0.3.22
 Release:        1%{?dist}
 Summary:        Turn installed operating systems into QEMU/KVM virtual machines
 # LGPL: data/firmware (SeaBIOS's VGA BIOS)
@@ -143,6 +143,11 @@ python3 packaging/layout.py install \
 %{_datadir}/icons/hicolor/symbolic/apps/io.github.oreo1298.Rehome-symbolic.svg
 
 %changelog
+* Thu Nov 19 2026 Rehome contributors - 0.3.22-1
+- Windows 98/Me: patcher9x's fix for the TLB invalidation bug, which corrupts their
+  memory under KVM on newer processors (Windows 98 hung at a black screen when it shut
+  down). VMM.VXD is taken out of VMM32.VXD and the fixed copy saved in SYSTEM\VMM32.
+
 * Tue Oct 27 2026 Rehome contributors - 0.3.21-1
 - Appliances with a DOS or Windows 9x VM no longer show a second cursor stuck in the
   middle of the screen.

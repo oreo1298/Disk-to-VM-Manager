@@ -124,6 +124,50 @@ def cpu_speed(ctx) -> PatchResult:
                        "(Windows 98 SE and Me guard against it).")
 
 
+@patch("win9x.tlb", "Fix memory corruption under KVM on new CPUs (VMM.VXD)", families=("win9x",))
+def tlb(ctx) -> PatchResult:
+    """Windows 98/Me corrupt their memory with hardware virtualization on new CPUs (the
+    TLB invalidation bug): patcher9x's fix in VMM.VXD, saved as SYSTEM\\VMM32\\VMM.VXD,
+    which Windows loads instead of the copy in VMM32.VXD (see win9x_tlb.py)."""
+    from rehome.patch import win9x_tlb, win9x_vmm32
+    g = ctx.g
+    windir = ctx.os.details.get("windir", "/WINDOWS")
+    with mounted(g, ctx.root, readonly=False):
+        path = ci_path(g, f"{windir}/SYSTEM/VMM32/VMM.VXD")
+        if path:
+            data = bytearray(g.read_file(path))
+            origin = f"{path}: patched"
+        else:
+            lib = ci_path(g, f"{windir}/SYSTEM/VMM32.VXD")
+            if not lib:
+                return PatchResult("", "", "not-needed", "This system has no VMM32.VXD.")
+            try:
+                vmm = win9x_vmm32.extract(g.read_file(lib), "VMM")
+            except win9x_vmm32.FormatError as e:
+                return PatchResult("", "", "failed", f"{lib} could not be read.", details=str(e))
+            if vmm is None:
+                return PatchResult("", "", "not-needed", f"{lib} contains no VMM.")
+            data = bytearray(vmm)
+            system = ci_path(g, f"{windir}/SYSTEM")
+            folder = ci_path(g, f"{system}/VMM32") or f"{system}/VMM32"
+            g.mkdir_p(folder)
+            path = f"{folder}/VMM.VXD"
+            origin = f"{path}: VMM from {lib}, patched"
+        applied, already = win9x_tlb.patch(data)
+        if applied:
+            g.write(path, bytes(data))
+            return PatchResult("", "", "applied",
+                               "Windows 98 and Me corrupt their memory with hardware "
+                               "virtualization (KVM) on AMD Zen 2, Intel 11th-generation Core "
+                               "and newer processors: VMM.VXD does not flush the processor's "
+                               "cached page translations (the TLB invalidation bug). Patched as "
+                               "patcher9x does.", [f"{origin} ({'; '.join(applied)})"])
+    if already:
+        return PatchResult("", "", "not-needed", f"Already patched: {path}.")
+    return PatchResult("", "", "not-needed", "VMM.VXD has none of the code with the TLB bug "
+                       "(Windows 95 does not have it).")
+
+
 LBA28_LIMIT = 2**28                     # sectors Windows 9x's IDE driver can address (128 GiB)
 
 

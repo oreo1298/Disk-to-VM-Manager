@@ -11,7 +11,7 @@
 %global __brp_python_bytecompile %{nil}
 
 Name:           rehome
-Version:        0.3.23
+Version:        0.3.25
 Release:        1%{?dist}
 Summary:        Turn installed operating systems into QEMU/KVM virtual machines
 # LGPL: data/firmware (SeaBIOS's VGA BIOS)
@@ -143,6 +143,18 @@ python3 packaging/layout.py install \
 %{_datadir}/icons/hicolor/symbolic/apps/io.github.oreo1298.Rehome-symbolic.svg
 
 %changelog
+* Thu Nov 19 2026 Rehome contributors - 0.3.25-1
+- Windows 98/Me: Microsoft Backup's tape drive drivers (DRVWQ117.VXD, DRVWPPQT.VXD)
+  are renamed as Microsoft advises (KB 272450). They crashed Windows 98 at boot once
+  it found the VM's disk controller and ports.
+- Import report and README: what to do when a Windows 9x installed on other hardware
+  has no drivers for the VM's (run Add New Hardware once).
+
+* Thu Nov 19 2026 Rehome contributors - 0.3.24-1
+- Windows 98 under KVM: the VM is turned off when Windows has overwritten its VGA
+  BIOS at the end of its shutdown (QEMU does not write-protect the BIOS area under
+  KVM) and hangs at a black screen.
+
 * Thu Nov 19 2026 Rehome contributors - 0.3.23-1
 - Diagnostics of a running VM also show where the guest's page tables send video
   memory and the VGA BIOS, the bytes at the VGA BIOS's physical address, and how QEMU

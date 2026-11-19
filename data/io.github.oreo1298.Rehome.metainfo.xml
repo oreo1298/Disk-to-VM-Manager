@@ -34,6 +34,16 @@
     <control>pointing</control>
   </supports>
   <releases>
+    <release version="0.3.25" date="2026-11-19">
+      <description>
+        <p>Windows 98/Me: Microsoft Backup's tape drive drivers are turned off as Microsoft advises; they crashed Windows 98 at boot once it found the VM's disk controller and ports.</p>
+      </description>
+    </release>
+    <release version="0.3.24" date="2026-11-19">
+      <description>
+        <p>Windows 98 under KVM: the VM is turned off when Windows hangs at a black screen at the end of its shutdown.</p>
+      </description>
+    </release>
     <release version="0.3.23" date="2026-11-19">
       <description>
         <p>Diagnostics of a running VM also show where the guest's page tables send video memory and the VGA BIOS, and how QEMU maps that range.</p>

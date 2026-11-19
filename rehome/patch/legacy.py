@@ -175,6 +175,41 @@ def tlb(ctx) -> PatchResult:
                        "(Windows 95 does not have it).")
 
 
+# Microsoft Backup's drivers for tape drives on the parallel port (DRVWPPQT) and on the
+# floppy controller (DRVWQ117, QIC-117). IOS loads them from SYSTEM\IOSUBSYS.
+TAPE_DRIVERS = ("DRVWPPQT.VXD", "DRVWQ117.VXD")
+
+
+@patch("win9x.tape_drivers", "Turn off Microsoft Backup's tape drive drivers", families=("win9x",))
+def tape_drivers(ctx) -> PatchResult:
+    """Microsoft Backup's tape drivers hang or crash Windows 98/Me with some disk drivers
+    ("An exception 0E has occurred ... called from ... in VxD DRVWQ117"), here once Windows
+    uses its own drivers for the VM's IDE controller and ports. Microsoft's fix is to rename
+    both files (KB 272450); a VM has no such tape drive. Renamed, not deleted (D51)."""
+    g = ctx.g
+    windir = ctx.os.details.get("windir", "/WINDOWS")
+    changes = []
+    with mounted(g, ctx.root, readonly=False):
+        for folder in (f"{windir}/SYSTEM/IOSUBSYS", f"{windir}/SYSTEM", windir):
+            for name in TAPE_DRIVERS:
+                path = ci_path(g, f"{folder}/{name}")
+                if not path:
+                    continue
+                new = path[:-1] + ("x" if path.endswith("d") else "X")      # .VXD -> .VXX
+                g.mv(path, new)
+                changes.append(f"{path} renamed to {new.rsplit('/', 1)[1]}")
+    if changes:
+        return PatchResult("", "", "applied",
+                           "Microsoft Backup's drivers for tape drives on the parallel port and "
+                           "the floppy controller can crash Windows 98 once it uses its own drivers "
+                           "for the VM's disk controller and ports (\"An exception 0E has occurred "
+                           "... in VxD DRVWQ117\"). Renamed as Microsoft advises (KB 272450); a VM "
+                           "has no such tape drive, and Microsoft Backup still backs up to files.",
+                           changes)
+    return PatchResult("", "", "not-needed", "Microsoft Backup's tape drive drivers are not "
+                       "installed.")
+
+
 LBA28_LIMIT = 2**28                     # sectors Windows 9x's IDE driver can address (128 GiB)
 
 

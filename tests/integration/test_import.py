@@ -267,6 +267,39 @@ def test_windows98_tlb_fix(images):
     assert sha256(src) == before
 
 
+def test_windows98_tape_drivers_are_turned_off(images):
+    """Regression: once Windows 98 found the VM's IDE controller and ports, Microsoft
+    Backup's tape driver crashed it at boot ("An exception 0E has occurred at
+    0028:29880000 ... called from 0028:C14BF003 in VxD DRVWQ117(01) + 0000E483", D51).
+    Both tape drivers are renamed to .VXX as Microsoft advises (KB 272450), in the VM's
+    copy only; then `rehome patch run` finds nothing left to do."""
+    from rehome import importer
+    from rehome.inspect.gfs import Drive, session
+    from rehome.inspect.model import InspectionReport
+    from rehome.patch import engine
+    q117, ppqt, hsflop = b"MZ q117" * 40, b"MZ ppqt" * 40, b"MZ hsflop" * 40
+    src = W.build_win9x(str(images / "win98fe-tape.img"), kernel32=(4, 10, 1998, 0), extra={
+        "/WINDOWS/SYSTEM/IOSUBSYS/DRVWQ117.VXD": q117,
+        "/WINDOWS/SYSTEM/IOSUBSYS/drvwppqt.vxd": ppqt,
+        "/WINDOWS/SYSTEM/IOSUBSYS/HSFLOP.PDR": hsflop})
+    before = sha256(src)
+    cfg = importer.run(importer.analyze([src]), importer.ImportOptions())
+    entry = next(json.loads(line) for line in (cfg.dir / "logs" / "patch.log").read_text()
+                 .splitlines() if '"win9x.tape_drivers"' in line)
+    assert entry["status"] == "applied" and len(entry["changes"]) == 2, entry
+    with session([Drive(str(cfg.resolve(cfg.disks[0].file)), "qcow2")]) as g:
+        g.mount_ro("/dev/sda1", "/")
+        names = set(g.ls("/WINDOWS/SYSTEM/IOSUBSYS"))
+        assert g.read_file("/WINDOWS/SYSTEM/IOSUBSYS/DRVWQ117.VXX") == q117
+        assert g.read_file("/WINDOWS/SYSTEM/IOSUBSYS/drvwppqt.vxx") == ppqt
+        assert g.read_file("/WINDOWS/SYSTEM/IOSUBSYS/HSFLOP.PDR") == hsflop
+    assert not {n.upper() for n in names} & {"DRVWQ117.VXD", "DRVWPPQT.VXD"}, names
+    assert sha256(src) == before
+    report = InspectionReport.from_dict(json.loads((cfg.dir / "inspection.json").read_text()))
+    again = engine.run(cfg, report.oses[0], importer.ImportOptions(), only=["win9x.tape_drivers"])
+    assert [r.status for r in again] == ["not-needed"], again
+
+
 def test_windows98_and_msdos(images):
     from rehome import importer
     src98 = W.build_win9x(str(images / "win98.img"))

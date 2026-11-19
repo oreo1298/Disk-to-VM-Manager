@@ -1681,3 +1681,30 @@ would like KVM for its speed.
   say when and how to run it.
 - A full Plug and Play BIOS would need Rehome to build and ship its own
   SeaBIOS. That is not worth it while Windows' detection does the job.
+
+## D51. Windows 98/Me: Microsoft Backup's tape drivers are turned off
+
+- Reported after D50: once Add New Hardware had found the VM's hardware,
+  Windows 98 crashed at boot. The message was "An exception 0E has occurred
+  at 0028:29880000 in VxD ---. This was called from 0028:C14BF003 in VxD
+  DRVWQ117(01) + 0000E483": a call to a bad address from DRVWQ117.
+- DRVWQ117.VXD and DRVWPPQT.VXD are Microsoft Backup's drivers for tape
+  drives on the floppy controller (QIC-117) and the parallel port. OEM
+  installs carry them even without Backup. They probe for their drives
+  once Windows' own floppy, port and IDE drivers are in place. Microsoft
+  documents hangs from them with other disk drivers and fixes them by
+  renaming both files (KB 272450: "removal of just one is not
+  sufficient").
+- `win9x.tape_drivers` (Windows 98/Me profile) does that in the VM's copy.
+  - It renames both files to `.VXX`, in `SYSTEM\IOSUBSYS`, `SYSTEM` or the
+    Windows folder, keeping the name's case. It renames rather than
+    deletes, so the change can be undone.
+  - A VM never has those tape drives. Microsoft Backup still backs up to
+    files.
+  - Run again, it reports "not-needed".
+- Test: `test_windows98_tape_drivers_are_turned_off` imports a Windows 98
+  FE disk with both drivers in `IOSUBSYS`, one in upper case and one in
+  lower case. Both become `.VXX` with their content, the other drivers and
+  the source are unchanged, and `rehome patch run` then finds nothing to
+  do. Not run on Microsoft's real files; to be confirmed on the
+  reporter's VM.

@@ -34,6 +34,11 @@
     <control>pointing</control>
   </supports>
   <releases>
+    <release version="0.3.23" date="2026-11-19">
+      <description>
+        <p>Diagnostics of a running VM also show where the guest's page tables send video memory and the VGA BIOS, and how QEMU maps that range.</p>
+      </description>
+    </release>
     <release version="0.3.22" date="2026-11-19">
       <description>
         <p>Windows 98/Me: the fix for the TLB invalidation bug, which corrupts their memory under KVM on newer processors (Windows 98 hung at a black screen when it shut down).</p>

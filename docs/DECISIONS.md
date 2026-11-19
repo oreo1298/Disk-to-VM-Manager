@@ -1548,3 +1548,28 @@ would like KVM for its speed.
     VMM32.VXD and the source are unchanged.
   - Not run with Microsoft's real VMM32.VXD (none here). Windows 98 itself
     under KVM is to be confirmed on the reporter's VM.
+- Reported on 0.3.22: the fix was applied, but the hang under KVM is
+  unchanged.
+  - The log says patcher9x's "simple" fix went into a new
+    `SYSTEM\VMM32\VMM.VXD`.
+  - The registers are the same again: EBX=5A80, EDX=6580, ECX=0100,
+    EDI=8000, ESI=0E0FFF67. That is deterministic, unlike the random
+    corruption the TLB bug causes. The TLB fix stays, since it is right on
+    newer CPUs under KVM, but it is not this hang's cause.
+  - What the registers say: in every report, EDX − EBX is 0xB00, whatever
+    the VGA BIOS build. ECX=0100 is the 256 characters of a text font. The
+    VGA BIOS was copying the 8x16 font into video memory (through the A000
+    window, after clearing 32 KB of text memory: EDI=8000) and was at
+    character 176. So the text-mode set Windows makes at shutdown was half
+    done when the VGA BIOS's code, as the processor sees it at C000-C1FFF,
+    turned into text cells. That is while Windows' display driver remaps
+    the VM's video memory between A000 and B800.
+  - 0.3.23's diagnostics tell the two possible causes apart. Either the VGA
+    BIOS at physical C0000 was overwritten, which would mean QEMU/KVM's
+    write protection of that range failed. Or Windows' page tables send
+    linear C0000 somewhere else, such as video memory. They record:
+    - the physical page behind each linear page from A0000 to C7FFF
+      (`gva2gpa`),
+    - the bytes at physical C0000 (55 AA if intact) and behind CS:EIP
+      (`xp`),
+    - QEMU's map of A0000-CFFFF ("rom" is write-protected).

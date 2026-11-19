@@ -36,10 +36,11 @@ def cpu_summary(dump: str) -> str:
             f"interrupts {'on' if efl & 1 << 9 else 'off'}")
 
 
-def memory_notes(dump: str, read) -> list[str]:
+def memory_notes(dump: str, hmp) -> list[str]:
     """For hangs in BIOS code (Windows 9x, DOS): the BIOS's video variables, the code the
-    processor runs and its stack, whose return addresses name the caller. ``read(address,
-    format)`` is QEMU's "x" (linear addresses, through the guest's own page tables)."""
+    processor runs and its stack, whose return addresses name the caller (QEMU's "x":
+    linear addresses, through the guest's own page tables), then where those page tables
+    send video memory and the VGA BIOS (mapping_notes). ``hmp`` runs a monitor command."""
     def reg(name):
         m = re.search(rf"\b{name}\s*=\s*([0-9a-fA-F]+)", dump)
         return int(m.group(1), 16) if m else None
@@ -60,7 +61,40 @@ def memory_notes(dump: str, read) -> list[str]:
             ("BIOS video rows at 0040:0084", 0x484, "/4xb"),
             ("Code at CS:EIP", cs + eip, "/32xb"),
             ("Stack at SS:ESP", ss + (esp & 0xFFFF if ss16 else esp), "/48xh")):
-        out += ["", f"{title}:", read(address, fmt).replace("\r", "").strip()]
+        out += ["", f"{title}:", hmp(f"x {fmt} {address:#x}").replace("\r", "").strip()]
+    return out + mapping_notes(cs + eip, hmp)
+
+
+def mapping_notes(code: int, hmp) -> list[str]:
+    """Whether the VGA BIOS's code was overwritten or is mapped away (D48): the physical
+    page behind each linear page from A0000 to C7FFF (video memory and the VGA BIOS),
+    the bytes at the physical address of ``code`` and at C0000 (55 AA: the VGA BIOS's
+    header), and how QEMU maps A0000-CFFFF ("rom" is write-protected)."""
+    def run(cmd: str) -> str:
+        return hmp(cmd).replace("\r", "").strip()
+
+    def gpa(linear: int) -> int | None:
+        m = re.search(r"gpa:\s*(0x[0-9a-fA-F]+)", run(f"gva2gpa {linear:#x}"))
+        return int(m.group(1), 16) if m else None
+
+    pages = []
+    for linear in range(0xA0000, 0xC8000, 0x1000):
+        phys = gpa(linear)
+        pages.append(f"{linear:05X}->{phys:05X}" if phys is not None else f"{linear:05X}->none")
+    out = ["", "Linear to physical pages (the guest's page tables), A0000-C7FFF:"]
+    out += [" ".join(pages[i:i + 8]) for i in range(0, len(pages), 8)]
+    phys = gpa(code)
+    out += ["", "Physical memory at C0000 (the VGA BIOS's header is 55 AA):",
+            run("xp /16xb 0xc0000")]
+    if phys is not None:
+        out += ["", f"Physical memory behind CS:EIP ({phys:#x}):", run(f"xp /16xb {phys:#x}")]
+    seen, mapped = set(), []
+    for line in run("info mtree -f").splitlines():
+        entry = line.strip()
+        if entry[:12] in ("00000000000a", "00000000000b", "00000000000c") and entry not in seen:
+            seen.add(entry)
+            mapped.append(entry)
+    out += ["", "QEMU's memory map, A0000-CFFFF:"] + (mapped[:20] or ["(not available)"])
     return out
 
 
@@ -74,7 +108,7 @@ def cpu_state(cfg: VMConfig, samples: int = 2, interval: float = 1.0) -> str:
             if i:
                 time.sleep(interval)
             dumps.append(q.hmp("info registers").replace("\r", ""))
-        notes = memory_notes(dumps[-1], lambda a, f: q.hmp(f"x {f} {a:#x}"))
+        notes = memory_notes(dumps[-1], q.hmp)
     return "\n".join([cpu_summary(d) for d in dumps] + ["", dumps[-1].strip()] + notes)
 
 

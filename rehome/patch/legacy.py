@@ -95,7 +95,9 @@ def win9x_report(ctx) -> PatchResult:
     msg += (" If Windows was installed on other hardware and Device Manager lists little more than "
             "\"Plug and Play BIOS\" (with a warning) and \"System board\", run Control Panel > "
             "Add New Hardware once and let Windows search: it then finds the PCI bus and these "
-            "devices and installs its own drivers.")
+            "devices and installs its own drivers. Then choose High Color (16 bit) in Display "
+            "Properties, not True Color (24 bit), which QEMU's Cirrus card draws with a "
+            "crosshatch.")
     return PatchResult("", "", "info", msg)
 
 

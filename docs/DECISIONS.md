@@ -1708,3 +1708,27 @@ would like KVM for its speed.
   the source are unchanged, and `rehome patch run` then finds nothing to
   do. Not run on Microsoft's real files; to be confirmed on the
   reporter's VM.
+- Confirmed on the reporter's VM: with both files renamed, Windows 98
+  boots, and Device Manager lists the VM's hardware (CD-ROM, disk and
+  floppy controllers, display adapter, keyboard, mouse, network adapter,
+  ports, sound, system devices).
+
+## D52. Windows 9x with the Cirrus Logic driver: High Color (16 bit), not 24 bit
+
+- Reported after D51: with Windows 98's Cirrus Logic driver in True Color
+  (24 bit), a red crosshatch covered window faces, list backgrounds, the
+  taskbar and icon labels. The desktop's plain colour was not affected.
+  Switching to High Color (16 bit) removed it, with hardware acceleration
+  still at Full.
+- So the fault is in QEMU's emulation of the CL-GD5446's drawing engine in
+  24-bit modes. `hw/display/cirrus_vga*.c` handles them separately and with
+  more restrictions: a 32-byte pattern pitch, a skip-left in bytes rather
+  than pixels, and transparent copies refused above 16 bpp. The driver's
+  pattern fills come out wrong there. Lowering hardware acceleration would
+  also avoid it, but 16-bit colour is the smaller change and keeps the
+  drawing engine.
+- Rehome cannot choose the colour depth offline: Windows keeps it in the
+  9x registry, which Rehome does not write (D50). So the import report and
+  the README say to pick High Color (16 bit).
+- 32-bit colour would need QEMU's standard VGA and a third-party Windows 9x
+  driver for it. That was offered to the reporter as a separate change.

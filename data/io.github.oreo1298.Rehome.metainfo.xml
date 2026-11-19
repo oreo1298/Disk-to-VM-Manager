@@ -34,6 +34,11 @@
     <control>pointing</control>
   </supports>
   <releases>
+    <release version="0.3.27" date="2026-11-19">
+      <description>
+        <p>Appliance: the maintenance console can rename the VM, switch between emulation and KVM, and hide the warnings shown before the VM starts.</p>
+      </description>
+    </release>
     <release version="0.3.26" date="2026-11-19">
       <description>
         <p>Windows 95/98/Me: Windows' memory manager is kept out of the BIOS area, which QEMU leaves writable under KVM; Windows 98 overwrote its VGA BIOS there and hung at shutdown.</p>

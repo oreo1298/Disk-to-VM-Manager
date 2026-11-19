@@ -224,6 +224,30 @@ def images_in_use(cfg) -> set[Path]:
     return {cfg.resolve(dev.file) for dev in list(cfg.cdroms) + list(cfg.floppies) if dev.file}
 
 
+# --- the VM's name ----------------------------------------------------------------------------
+
+MAX_NAME = 50                           # the console's header line stays within 80 columns
+
+
+def check_name(name: str) -> str:
+    """A name for the VM as "Starting <name>..." and the maintenance console show it."""
+    name = name.strip()
+    if not name:
+        raise RehomeError("The name must not be empty.")
+    if len(name) > MAX_NAME:
+        raise RehomeError(f"The name is longer than {MAX_NAME} characters.")
+    if not name.isprintable():
+        raise RehomeError("The name must be plain text (no control characters).")
+    return name
+
+
+def set_name(name: str, conf: dict, config_path: Path = runtime.CONFIG) -> None:
+    """The appliance's own copy of the VM's name (the console's header, restore questions);
+    the VM's configuration is renamed with ``rehome set --name`` as its owner."""
+    conf.setdefault("appliance", {})["name"] = check_name(name)
+    toml.dump_atomic(conf, config_path)
+
+
 # --- the maintenance password -----------------------------------------------------------------
 
 def set_password(password: str, conf: dict, root: Path = Path("/"),

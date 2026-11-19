@@ -191,6 +191,11 @@ def test_start_checks_fit_the_vm_to_the_computer():
     ok.machine.memory_mib, ok.machine.cpus = 256, 1
     c2 = hardware.start_checks(ok, hardware.Report(cpus=8, memory_mib=16384, kvm=True))
     assert not c2.notes and not c2.changed and ok.machine.memory_mib == 256
+    # A VM set to emulation is not slowed down by virtualization being off.
+    ok.machine.accel = "tcg"
+    c3 = hardware.start_checks(ok, hardware.Report(cpus=8, memory_mib=16384, kvm=False,
+                                                    virtualization="vmx"))
+    assert not c3.notes
 
 
 def test_inside_commands_refuse_outside_an_appliance(monkeypatch, capsys):

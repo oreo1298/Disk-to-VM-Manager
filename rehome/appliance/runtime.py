@@ -117,7 +117,8 @@ MAX_DELAY = 60
 
 def startup(conf: dict | None = None, settings: dict | None = None) -> dict:
     """``delay`` (seconds "Starting ..." waits for M), ``open`` (at power-on: the VM or
-    the maintenance console), ``when_vm_shuts_down``."""
+    the maintenance console), ``when_vm_shuts_down``, ``notes`` (whether the warnings
+    about this computer, such as less memory or disk space, show before the VM starts)."""
     if conf is None:
         try:
             conf = load_config()
@@ -131,7 +132,8 @@ def startup(conf: dict | None = None, settings: dict | None = None) -> dict:
     return {"delay": max(0, min(MAX_DELAY, delay)),
             "open": s.get("open") if s.get("open") in OPEN else "vm",
             "when_vm_shuts_down": s.get("when_vm_shuts_down")
-            if s.get("when_vm_shuts_down") in WHEN_VM_SHUTS_DOWN else "poweroff"}
+            if s.get("when_vm_shuts_down") in WHEN_VM_SHUTS_DOWN else "poweroff",
+            "notes": s.get("notes") is not False}
 
 
 def opengl(settings: dict | None = None, args: dict | None = None) -> bool:
@@ -376,7 +378,12 @@ def kiosk() -> int:
 
     def starting(notes: list[str]) -> bool:
         """"Starting <VM>..." for a few seconds; False if M was pressed meanwhile. Nothing
-        says so: the maintenance console is for whoever looks after the computer."""
+        says so: the maintenance console is for whoever looks after the computer. The
+        warnings can be turned off there; they still go to the log."""
+        if notes and not start["notes"]:
+            for n in notes:
+                log.info("not shown before the VM starts: %s", n)
+            notes = []
         _say([f"Starting {cfg.name}..."] + ([""] + [f"! {n}" for n in notes] if notes else []))
         if _wait_key(start["delay"] + (8 if notes else 0)) == "m":
             _say(["Opening the maintenance console..."])

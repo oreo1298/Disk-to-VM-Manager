@@ -170,7 +170,7 @@ def start_checks(cfg: VMConfig, report: Report | None = None, data_free: int | N
     """Adapt ``cfg`` (in memory) to this computer and explain what is limited."""
     r = report or gather()
     c = Checks()
-    if not r.kvm:
+    if not r.kvm and cfg.machine.accel != "tcg":     # set to emulation: nothing is missing
         if r.virtualization:
             c.notes.append("Virtualization is supported by this processor but not usable; "
                            "the VM runs much slower. Check the firmware settings.")

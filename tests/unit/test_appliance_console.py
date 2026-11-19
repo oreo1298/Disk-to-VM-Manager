@@ -11,7 +11,7 @@ from rehome.errors import RehomeError
 from rehome.util import toml
 
 
-def _kiosk(monkeypatch, results, settings=None, keys=None, conf=None):
+def _kiosk(monkeypatch, results, settings=None, keys=None, conf=None, notes=()):
     """Run kiosk() with ``results`` as the sessions' outcomes; returns (said, intent)."""
     cfg = types.SimpleNamespace(name="Old PC", input=types.SimpleNamespace(pointer="usb-tablet"),
                                 machine=types.SimpleNamespace(memory_mib=512, cpus=1, type="pc"))
@@ -34,7 +34,7 @@ def _kiosk(monkeypatch, results, settings=None, keys=None, conf=None):
     monkeypatch.setattr(runtime, "_read_json", lambda path: next(results))
     monkeypatch.setattr(runtime.hardware, "gather", lambda: None)
     monkeypatch.setattr(runtime.hardware, "start_checks",
-                        lambda *a, **k: types.SimpleNamespace(notes=[]))
+                        lambda *a, **k: types.SimpleNamespace(notes=list(notes)))
     monkeypatch.setattr(runtime.hardware, "has_gpu_acceleration", lambda: True)
     monkeypatch.setattr(runtime.hardware, "screen_size", lambda: (1920, 1080))
     monkeypatch.setattr(runtime.subprocess, "run",
@@ -50,6 +50,15 @@ def test_the_start_screen_does_not_mention_the_maintenance_console(monkeypatch):
                    for lines in said for line in lines)
     assert waits == [3]
     assert intent["outcome"] == "poweroff"
+
+
+def test_warnings_show_before_the_vm_starts_unless_turned_off(monkeypatch):
+    note = "This computer has 4 GiB of memory; the VM gets 3.2 GiB instead of 8 GiB."
+    said, _, waits = _kiosk(monkeypatch, [{"outcome": "poweroff"}], notes=[note])
+    assert said[0] == ["Starting Old PC...", "", "! " + note] and waits == [3 + 8]
+    said, _, waits = _kiosk(monkeypatch, [{"outcome": "poweroff"}], notes=[note],
+                            settings={"startup": {"notes": False}})
+    assert said[0] == ["Starting Old PC..."] and waits == [3]
 
 
 def test_m_still_opens_the_maintenance_console(monkeypatch):
@@ -94,10 +103,13 @@ def test_m_after_the_vm_shut_down_and_starts_again(monkeypatch):
 
 def test_startup_settings_are_checked():
     conf = {"kiosk": {"countdown": 5}}
-    assert runtime.startup(conf, {}) == {"delay": 5, "open": "vm", "when_vm_shuts_down": "poweroff"}
-    bad = {"startup": {"delay": 999, "open": "elsewhere", "when_vm_shuts_down": "explode"}}
+    assert runtime.startup(conf, {}) == {"delay": 5, "open": "vm", "when_vm_shuts_down": "poweroff",
+                                         "notes": True}
+    bad = {"startup": {"delay": 999, "open": "elsewhere", "when_vm_shuts_down": "explode",
+                       "notes": "maybe"}}
     assert runtime.startup(conf, bad) == {"delay": runtime.MAX_DELAY, "open": "vm",
-                                          "when_vm_shuts_down": "poweroff"}
+                                          "when_vm_shuts_down": "poweroff", "notes": True}
+    assert runtime.startup(conf, {"startup": {"notes": False}})["notes"] is False
     assert runtime.startup(conf, {"startup": {"delay": "x"}})["delay"] == 3
 
 
@@ -164,10 +176,13 @@ def test_startup_and_shutdown_page(monkeypatch, tmp_path):
     saved = {}
     monkeypatch.setattr(runtime, "load_settings", lambda: dict(saved))
     monkeypatch.setattr(console, "_save_settings", lambda s: saved.update(s))
-    Script(monkeypatch, ["1", "2", "12", "3", "2", "2", "99", ""])
+    Script(monkeypatch, ["1", "2", "12", "3", "2", "2", "99", "4", ""])
     console.startup_and_shutdown({"appliance": {"name": "Windows 98"}, "kiosk": {"countdown": 3}})
     assert saved["startup"] == {"open": "maintenance", "delay": 12,
-                                "when_vm_shuts_down": "restart"}
+                                "when_vm_shuts_down": "restart", "notes": False}
+    Script(monkeypatch, ["4", ""])
+    console.startup_and_shutdown({"appliance": {"name": "Windows 98"}, "kiosk": {"countdown": 3}})
+    assert saved["startup"]["notes"] is True
 
 
 def test_checkpoints_are_chosen_by_number(monkeypatch):
@@ -211,14 +226,62 @@ def test_the_clock_is_set_by_hand(monkeypatch):
 
 def test_memory_and_processors(monkeypatch):
     cfg = types.SimpleNamespace(id="vm-id", name="Windows 98", os=types.SimpleNamespace(family="win9x"),
-                                machine=types.SimpleNamespace(memory_mib=256, cpus=1), cdroms=[])
-    report = types.SimpleNamespace(memory_mib=8192, cpus=4)
+                                machine=types.SimpleNamespace(memory_mib=256, cpus=1, accel="tcg"),
+                                cdroms=[])
+    report = types.SimpleNamespace(memory_mib=8192, cpus=4, kvm=True)
     monkeypatch.setattr(console, "_the_vm", lambda conf: cfg)
     monkeypatch.setattr(console.hardware, "gather", lambda: report)
     s = Script(monkeypatch, ["1", "16384", "1", "512", "2", "9", "2", "2", ""])
     console.vm_settings({})
     assert s.ran == [[console.REHOME, "set", "vm-id", "--memory", "512"],
                      [console.REHOME, "set", "vm-id", "--cpus", "2"]]
+
+
+def _vm_page(monkeypatch, answers, accel="tcg", family="win9x", kvm=True):
+    cfg = types.SimpleNamespace(id="vm-id", name="Windows 98 (3)",
+                                os=types.SimpleNamespace(family=family),
+                                machine=types.SimpleNamespace(memory_mib=256, cpus=1, accel=accel),
+                                cdroms=[])
+    monkeypatch.setattr(console, "_the_vm", lambda conf: cfg)
+    monkeypatch.setattr(console.hardware, "gather",
+                        lambda: types.SimpleNamespace(memory_mib=8192, cpus=4, kvm=kvm))
+    named = []
+    monkeypatch.setattr(console.maintenance, "set_name", lambda name, conf: named.append(name))
+    s = Script(monkeypatch, answers)
+    console.vm_settings({"appliance": {"vm": "vm-id", "name": cfg.name}})
+    return s.ran, named
+
+
+def test_the_vm_is_renamed_for_the_start_screen_and_the_console(monkeypatch):
+    ran, named = _vm_page(monkeypatch, ["5", "  Grandpa's PC  ", ""])
+    assert ran == [[console.REHOME, "set", "vm-id", "--name", "Grandpa's PC"]] and \
+        named == ["Grandpa's PC"]
+    ran, named = _vm_page(monkeypatch, ["5", "", "5", "Windows 98 (3)",
+                                        "5", "x" * (maintenance.MAX_NAME + 1), ""])
+    assert ran == [] and named == []                 # kept, unchanged, too long
+
+
+def test_emulation_or_kvm(monkeypatch):
+    # Windows 9x under emulation: KVM only after a yes, as "auto" (emulation where it is off).
+    ran, _ = _vm_page(monkeypatch, ["6", "no", "6", "yes", ""])
+    assert ran == [[console.REHOME, "set", "vm-id", "--accel", "auto"]]
+    ran, _ = _vm_page(monkeypatch, ["6", ""], family="winnt", kvm=False)
+    assert ran == [[console.REHOME, "set", "vm-id", "--accel", "auto"]]
+    ran, _ = _vm_page(monkeypatch, ["6", ""], accel="auto")
+    assert ran == [[console.REHOME, "set", "vm-id", "--accel", "tcg"]]
+    assert console.accel_text("tcg", True).startswith("emulation")
+    assert console.accel_text("auto", False).endswith("so emulation")
+
+
+def test_the_name_is_checked_and_kept_in_the_appliance_config(tmp_path):
+    conf_path = tmp_path / "appliance.toml"
+    conf = {"appliance": {"vm": "vm-id", "name": "Windows 98 (3)"}}
+    maintenance.set_name("  Grandpa's PC ", conf, conf_path)
+    assert toml.load(conf_path)["appliance"] == {"vm": "vm-id", "name": "Grandpa's PC"}
+    for bad in ("", "   ", "x" * (maintenance.MAX_NAME + 1), "two\nlines", "tab\there"):
+        with pytest.raises(RehomeError):
+            maintenance.check_name(bad)
+    assert maintenance.check_name("Windows 98 – Büro") == "Windows 98 – Büro"
 
 
 # --- maintenance.py: real files, real qemu-img ----------------------------------------------------

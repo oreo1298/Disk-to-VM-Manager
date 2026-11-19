@@ -1782,3 +1782,41 @@ would like KVM for its speed.
   guest. That would mean pausing the VM and pointing the PAM registers at
   QEMU's read-only `pc.rom` holding a copy of the initialised VGA BIOS:
   possible, but involved.
+- The reporter switched Windows 98 back to emulation, which shuts it down
+  cleanly; whether EMMExclude alone fixes KVM stays unconfirmed. Emulation
+  stays the default for Windows 9x.
+
+## D54. Appliance: name, emulation or KVM, and the start warnings in the console
+
+- Asked for by the reporter, for the appliance itself rather than the
+  computer it was built on:
+  - change the name "Starting <name>..." shows,
+  - switch between emulation and KVM,
+  - turn off the warnings shown before the VM starts (less memory than the
+    VM was given, a drive smaller than its disks could grow to).
+- All three live in the maintenance console, where the other settings for
+  whoever looks after the computer already are.
+  - **Name** (VM settings, 5): `rehome set --name` renames the VM as the
+    user who owns it, and the appliance's own copy in
+    `/etc/rehome/appliance.toml` (the console's header, the restore
+    question) follows. Names are trimmed, plain text and at most 50
+    characters, so the console's lines stay within 80 columns. A name too
+    long for "Starting ..." wraps there.
+  - **Emulation or KVM** (VM settings, 6): `rehome set --accel tcg` or
+    `--accel auto`. "auto" is what an appliance already turns "kvm" into
+    (`fit_vm`), so a computer with virtualization off still starts the VM.
+    For Windows 95/98/ME, KVM needs a typed yes, after a sentence on why
+    (D49, D53).
+  - **Warnings** (Startup and shutdown, 4): `settings.toml`
+    `[startup] notes = false`. The kiosk then shows only "Starting
+    <name>...", without the 8 extra seconds, and logs each note instead.
+    The memory and processor limits still apply; only the text goes.
+- The warning that virtualization is off is no longer given for a VM set to
+  emulation: nothing is missing there.
+- Tests: the kiosk shows the notes and waits 8 s longer, and not when they
+  are off. The startup page toggles the setting. The VM settings page
+  renames (trimmed; empty, unchanged or too long names run nothing) and
+  switches the accelerator (Windows 9x only after "yes"; "auto" without
+  KVM too; back to "tcg"). Bad names are refused and the appliance config
+  is written. `start_checks` gives a VM set to emulation no virtualization
+  note. Every page fits 80 columns with a 50-character name.

@@ -73,11 +73,19 @@ At power-on:
 
 1. The boot menu is hidden; the VM starts directly.
 2. "Starting Windows XP…" appears in the top-left corner for a few
-   seconds (3 by default), with notes when something limits the VM: no
-   virtualization, less memory than the VM was given (the VM gets what the
-   computer can spare), a small drive. Pressing **M** then opens the
-   maintenance console. Nothing on the screen says so: the console is for
-   whoever looks after the computer, not for the people using the VM.
+   seconds (3 by default). The name is the VM's, which the maintenance
+   console can change. Warnings follow when something limits the VM, and
+   the wait is then 8 seconds longer:
+   - no virtualization (not for a VM set to emulation, which does not need
+     it),
+   - less memory than the VM was given (the VM gets what the computer can
+     spare),
+   - a small drive.
+
+   The maintenance console can turn the warnings off; they then only go to
+   the log. Pressing **M** opens the maintenance console. Nothing on the
+   screen says so: the console is for whoever looks after the computer, not
+   for the people using the VM.
 3. The VM appears full screen, scaled to the screen.
 
 | You do | What happens |
@@ -172,13 +180,13 @@ the network, the clock and the free space.
 | 1 | Start the VM | |
 | 2 | Checkpoints | Take one, go back to one, delete one (chosen by number). |
 | 3 | Back up or restore the VM | **Back up** writes the VM to a USB drive as one `.rehome` file in a "Rehome backups" folder (FAT32 drives hold backups up to 4 GB; exFAT and NTFS drives any size). **Restore** replaces the VM with a backup from a USB drive; its checkpoints go, CD/DVD images the appliance already has stay. Rehome on a computer imports these files too (`rehome import-vm`), and any Rehome export can be restored. |
-| 4 | VM settings | Memory and processors; **put a CD/DVD image in**: an `.iso` from a USB drive is copied to the appliance and put in the VM's CD drive (a way to get drivers and programs into Windows 98, which cannot read USB sticks), and taken out again. |
+| 4 | VM settings | The VM's **name** (shown while it starts and in the console); memory and processors; **emulation or KVM**: KVM (hardware virtualization) is much faster, emulation avoids KVM's problems with Windows 95/98/ME (they can hang when they shut down under KVM, D49/D53). "KVM" falls back to emulation on a computer whose firmware has virtualization turned off. **Put a CD/DVD image in**: an `.iso` from a USB drive is copied to the appliance and put in the VM's CD drive (a way to get drivers and programs into Windows 98, which cannot read USB sticks), and taken out again. |
 | 5 | USB devices | See which devices go to the VM; exclude or include one. |
 | 6 | Network and Wi-Fi | Connect to a Wi-Fi network, forget one, test the connection. |
 | 7 | Date, time and time zone | Internet time, or the date and time set by hand (for computers that are never online); the time zone. |
 | 8 | Sound | The volume (a mixer; it is kept across restarts), a test sound. |
 | 9 | Screen and touchpad | Always start with basic graphics; OpenGL drawing on or off; restart once with basic graphics; the touchpad's speed and tap to click (DOS and Windows 9x VMs). |
-| 10 | Startup and shutdown | At power-on, start the VM or open the console; how many seconds "Starting …" waits for M (0–60); when the VM shuts down, turn the computer off, start the VM again, or open the console. The power button always turns the computer off. |
+| 10 | Startup and shutdown | At power-on, start the VM or open the console; how many seconds "Starting …" waits for M (0–60); when the VM shuts down, turn the computer off, start the VM again, or open the console; show or hide the warnings before the VM starts. The power button always turns the computer off. |
 | 11 | Maintenance password | Set, change or remove the password the console asks for (log in as `root`). Building with `--maintenance-password` sets one from the start. |
 | 12 | Storage | Free space; the VM's disks, CD/DVD images and checkpoints. |
 | 13 | Hardware report | Processor, virtualization, memory, graphics, displays, sound, network. |

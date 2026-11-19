@@ -406,14 +406,18 @@ def vm_settings(conf: dict) -> None:
         r = hardware.gather()
         _clear()
         print(f"VM settings: {cfg.name}\n")
+        print(f"  Name:        {cfg.name}")
         print(f"  Memory:      {human(cfg.machine.memory_mib * MIB)} "
               f"(this computer has {human(r.memory_mib * MIB)})")
         print(f"  Processors:  {cfg.machine.cpus} (this computer has {r.cpus})")
         cds = ", ".join(Path(d.file).name if d.file else "empty" for d in cfg.cdroms)
+        print(f"  Runs with:   {accel_text(cfg.machine.accel, r.kvm)}")
         print(f"  CD/DVD:      {cds or 'no drive'}")
         print("\n   1  Memory\n   2  Processors\n"
               "   3  Put a CD/DVD image (.iso) from a USB drive in\n"
-              "   4  Take the CD/DVD out\n   Enter  Back")
+              "   4  Take the CD/DVD out\n   5  Name (shown while the VM starts)\n"
+              "   6  " + ("Use KVM (hardware virtualization)" if cfg.machine.accel == "tcg"
+                         else "Use emulation") + "\n   Enter  Back")
         c = _ask("\n  Choose: ")
         if c == "1":
             set_memory(cfg, r)
@@ -426,8 +430,52 @@ def vm_settings(conf: dict) -> None:
             insert_cd(cfg)
         elif c == "4":
             eject_cd(cfg)
+        elif c == "5":
+            rename(conf, cfg)
+        elif c == "6":
+            set_accel(cfg, r)
         else:
             return
+
+
+def accel_text(accel: str, kvm: bool) -> str:
+    if accel == "tcg":
+        return "emulation (slower; avoids KVM's problems with old systems)"
+    return "KVM (hardware virtualization)" if kvm else \
+        "KVM, which this computer cannot use now, so emulation"
+
+
+def set_accel(cfg, report) -> None:
+    """Emulation or KVM. In an appliance "KVM" is "auto": a computer whose firmware has
+    virtualization turned off still starts the VM, under emulation."""
+    if cfg.machine.accel != "tcg":
+        _run([REHOME, "set", cfg.id, "--accel", "tcg"])
+        _pause()
+        return
+    if cfg.os.family == "win9x":
+        print("  Windows 95, 98 and ME can hang under KVM when they shut down, before they\n"
+              "  have saved everything. Under emulation they shut down properly.")
+        if not _yes("  Use KVM anyway? Type yes: "):
+            return
+    if not report.kvm:
+        print("  This computer cannot use KVM now (it is turned off in its firmware settings);\n"
+              "  the VM uses emulation until it can.")
+    _run([REHOME, "set", cfg.id, "--accel", "auto"])
+    _pause()
+
+
+def rename(conf: dict, cfg) -> None:
+    name = _ask(f"  New name (Enter: keep \"{cfg.name}\"): ").strip()
+    if not name or name == cfg.name:
+        return
+    try:
+        name = maintenance.check_name(name)
+        if _run([REHOME, "set", cfg.id, "--name", name]) == 0:
+            maintenance.set_name(name, conf)
+    except RehomeError as e:
+        _error(e)
+        return
+    _pause()
 
 
 def set_memory(cfg, report) -> None:
@@ -770,14 +818,22 @@ def startup_and_shutdown(conf: dict) -> None:
         print("Startup and shutdown\n")
         print("  At power-on:             " + ("start the VM" if st["open"] == "vm"
                                                else "open this console"))
-        print(f"  Before the VM starts:    \"Starting {name}...\" shows for {st['delay']} s;\n"
-              "                           pressing M then opens this console")
+        shows = (f"\"Starting {name}...\" shows for {st['delay']} s; pressing M then opens "
+                 "this console")
+        for i, part in enumerate(_wrap(shows, 51)):
+            print(("  Before the VM starts:    " if i == 0 else " " * 27) + part)
         print(f"  When the VM shuts down:  {AFTER_SHUTDOWN[st['when_vm_shuts_down']]}")
+        print("  Warnings before start:   " + (
+            "shown; they add 8 s to the wait\n"
+            "                           (e.g. less memory or disk space than the VM wants)"
+            if st["notes"] else "not shown (they go to the log)"))
         print("\n  The computer's power button always asks the VM to shut down, then turns\n"
               "  the computer off.\n")
         print("   1  At power-on: " + ("open this console instead" if st["open"] == "vm"
                                        else "start the VM"))
-        print("   2  Seconds before the VM starts\n   3  When the VM shuts down\n   Enter  Back")
+        print("   2  Seconds before the VM starts\n   3  When the VM shuts down\n"
+              "   4  " + ("Hide" if st["notes"] else "Show") + " the warnings before the VM starts"
+              "\n   Enter  Back")
         c = _ask("\n  Choose: ")
         new = dict(settings.get("startup", {}))
         if c == "1":
@@ -799,6 +855,8 @@ def startup_and_shutdown(conf: dict) -> None:
             if k is None:
                 continue
             new["when_vm_shuts_down"] = k
+        elif c == "4":
+            new["notes"] = not st["notes"]
         else:
             return
         settings["startup"] = new
@@ -964,7 +1022,7 @@ MENU = [
     ("1", "Start the VM", start_vm),
     ("2", "Checkpoints", checkpoints),
     ("3", "Back up or restore the VM", backups),
-    ("4", "VM settings (memory, CD/DVD)", vm_settings),
+    ("4", "VM settings (name, memory, KVM)", vm_settings),
     ("5", "USB devices", usb_devices),
     ("6", "Network and Wi-Fi", network),
     ("7", "Date, time and time zone", clock),

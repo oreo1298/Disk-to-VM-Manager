@@ -11,7 +11,7 @@
 %global __brp_python_bytecompile %{nil}
 
 Name:           rehome
-Version:        0.3.25
+Version:        0.3.26
 Release:        1%{?dist}
 Summary:        Turn installed operating systems into QEMU/KVM virtual machines
 # LGPL: data/firmware (SeaBIOS's VGA BIOS)
@@ -143,6 +143,11 @@ python3 packaging/layout.py install \
 %{_datadir}/icons/hicolor/symbolic/apps/io.github.oreo1298.Rehome-symbolic.svg
 
 %changelog
+* Thu Nov 19 2026 Rehome contributors - 0.3.26-1
+- Windows 95/98/Me: SYSTEM.INI gets [386Enh] EMMExclude=C000-EFFF. Under KVM, QEMU
+  leaves the BIOS area writable and Windows 98 used it as free memory, overwrote the
+  VGA BIOS and hung at shutdown before writing its disk cache back.
+
 * Thu Nov 19 2026 Rehome contributors - 0.3.25-1
 - Windows 98/Me: Microsoft Backup's tape drive drivers (DRVWQ117.VXD, DRVWPPQT.VXD)
   are renamed as Microsoft advises (KB 272450). They crashed Windows 98 at boot once

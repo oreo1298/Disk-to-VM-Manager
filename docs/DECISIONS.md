@@ -1732,3 +1732,53 @@ would like KVM for its speed.
   the README say to pick High Color (16 bit).
 - 32-bit colour would need QEMU's standard VGA and a third-party Windows 9x
   driver for it. That was offered to the reporter as a separate change.
+
+## D53. Windows 9x: EMMExclude=C000-EFFF keeps Windows out of the BIOS area
+
+- Reported after D52: with Windows' own drivers installed (D50), the
+  shutdown under KVM hung differently.
+  - The screen showed text mode with every cell drawn as the same
+    vertical bars. The 8x16 font had been copied from a VGA BIOS full of
+    `20 07`, which gives alternating rows `00100000` and `00000111`.
+  - The diagnostics: Windows still running (protected mode, interrupts
+    going on and off), physical C0000 overwritten with `20 07` again,
+    linear A0000-BFFFF unmapped, CR2=B8000.
+  - ScanDisk ran at the next start, so this time the VGA BIOS was gone
+    before Windows had written its disk cache back. The D49 watcher rule
+    does not match: the processor is not in the VGA BIOS. It must not:
+    turning the VM off there would lose data.
+  - The same log shows the D49 rule turning the VM off correctly on an
+    earlier shutdown that day (V86 mode at C000:1DF2).
+- So the write itself has to stop. The only difference between KVM and
+  emulation that Windows can see at C0000 is that it can be written (D49).
+  - Windows 9x's memory manager uses upper-memory pages it finds writable
+    and unused. Video drivers (Nvidia, S3, SiS among them) add
+    `EMMExclude=C000-CFFF` to SYSTEM.INI when they install, to keep it out
+    of their BIOS.
+  - Under emulation the shadowed ROMs cannot be written, so Windows leaves
+    them alone. Under KVM it sees writable pages.
+  - The overwrite is 32 KB of 0x0720, the size of the text-mode video
+    memory that the display virtualisation (VDD) keeps for a VM, and in
+    the first hang the VM's B8000-BFFFF pages had just been remapped (CR2
+    BF000). Both fit Windows having taken C0000-C7FFF as free memory and
+    put that buffer there.
+- `win9x.emm_exclude` (Windows 95 and 98/Me profiles) adds
+  `EMMExclude=C000-EFFF` under `[386Enh]`.
+  - That is everything SeaBIOS write-protects after POST: option ROMs from
+    C0000 and its own code below F0000. That way Windows under KVM sees
+    the same usable upper memory as under emulation, where none of it was
+    writable either.
+  - Other EMMExclude lines are kept (Windows allows several). The line is
+    added once; a run that finds it reports "not-needed".
+  - A missing `[386Enh]` section is created. Bytes are kept as they are
+    (latin-1 round trip), and the new line ends in CRLF.
+- Tests: unit tests for the SYSTEM.INI edit (section in any case, at the
+  end of the file without a line break, missing, other ranges, the line
+  already there in other spelling, non-ASCII bytes). An import test
+  checks the exact SYSTEM.INI and that a second run finds nothing to do.
+- Not confirmed yet: whether Windows 98 then shuts down cleanly under KVM
+  on the reporter's VM. If it does not, the remaining options are
+  emulation, or making C0000 truly read-only under KVM from outside the
+  guest. That would mean pausing the VM and pointing the PAM registers at
+  QEMU's read-only `pc.rom` holding a copy of the initialised VGA BIOS:
+  possible, but involved.

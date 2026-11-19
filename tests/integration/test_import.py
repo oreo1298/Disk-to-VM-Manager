@@ -300,6 +300,31 @@ def test_windows98_tape_drivers_are_turned_off(images):
     assert [r.status for r in again] == ["not-needed"], again
 
 
+def test_windows98_keeps_out_of_the_bios_area(images):
+    """Regression: under KVM, where the BIOS area is writable, Windows 98 put a text-screen
+    buffer over the VGA BIOS and hung when it shut down, before its disk cache was written
+    back (D53). SYSTEM.INI gets [386Enh] EMMExclude=C000-EFFF, once."""
+    from rehome import importer
+    from rehome.inspect.gfs import Drive, session
+    from rehome.inspect.model import InspectionReport
+    from rehome.patch import engine
+    src = W.build_win9x(str(images / "win98-emm.img"), kernel32=(4, 10, 1998, 0))
+    before = sha256(src)
+    cfg = importer.run(importer.analyze([src]), importer.ImportOptions())
+    entry = next(json.loads(line) for line in (cfg.dir / "logs" / "patch.log").read_text()
+                 .splitlines() if '"win9x.emm_exclude"' in line)
+    assert entry["status"] == "applied", entry
+    with session([Drive(str(cfg.resolve(cfg.disks[0].file)), "qcow2")]) as g:
+        g.mount_ro("/dev/sda1", "/")
+        ini = g.read_file("/WINDOWS/SYSTEM.INI")
+    assert ini == (b"[boot]\r\nshell=Explorer.exe\r\n[386Enh]\r\nEMMExclude=C000-EFFF\r\n"
+                   b"[vcache]\r\n"), ini
+    assert sha256(src) == before
+    report = InspectionReport.from_dict(json.loads((cfg.dir / "inspection.json").read_text()))
+    again = engine.run(cfg, report.oses[0], importer.ImportOptions(), only=["win9x.emm_exclude"])
+    assert [r.status for r in again] == ["not-needed"], again
+
+
 def test_windows98_and_msdos(images):
     from rehome import importer
     src98 = W.build_win9x(str(images / "win98.img"))

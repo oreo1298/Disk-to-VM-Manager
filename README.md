@@ -16,7 +16,7 @@ Rehome is a Linux desktop app for QEMU/KVM. It does two jobs:
 
 Everything the GUI does is also available on the command line (`rehome --help`).
 
-> **Status: 0.3.25, early release.** The engine, CLI and GUI work, and they are
+> **Status: 0.3.26, early release.** The engine, CLI and GUI work, and they are
 > tested on synthetic disks and on real FreeDOS, ReactOS and Ubuntu guests. Real
 > Windows and 9x installations were not tested yet; see
 > [What has been tested](#what-has-been-tested).
@@ -226,6 +226,10 @@ chosen per operating system from profiles in `data/profiles/`:
     stops at "It's now safe to turn off your computer". Rehome watches the
     VM's processor and turns the VM off a few seconds after Windows has
     stopped it for good.
+  - Keeps Windows 9x's memory manager out of the BIOS area
+    (`EMMExclude=C000-EFFF` in SYSTEM.INI, as video drivers do for their own
+    BIOS). Under KVM, QEMU leaves that area writable, and Windows 98 used it
+    as free memory, overwrote the VGA BIOS and hung when it shut down.
   - Under KVM, Windows 98's shutdown ends differently: QEMU does not
     write-protect the BIOS area there, and Windows overwrites the VGA BIOS
     with text after it has saved everything, then hangs at a black screen.
@@ -415,7 +419,7 @@ scripts. Add `-v` to any command for technical details.
 | Windows 95/98 has no drivers: low resolution and 16 colours, no sound or network, and Device Manager lists only "Plug and Play BIOS" (with a warning) and "System board" | Windows was installed on other hardware and has not looked for the VM's. QEMU's BIOS has only a stub Plug and Play BIOS, so Windows finds the PCI bus only by detection. Open Control Panel > Add New Hardware, let Windows search, restart, and accept the new hardware it finds. Then choose High Color (16 bit), not True Color (24 bit), in Display Properties. Windows' own drivers cover all of it; if it asks for the Windows CD, insert yours with `rehome cd VM win98.iso` (or point it to `C:\WINDOWS\OPTIONS\CABS` if that folder exists). |
 | Windows 95/98: a crosshatch pattern over windows, the taskbar and icon labels with the Cirrus Logic driver | QEMU's emulated Cirrus card draws some of the driver's operations wrongly in 24-bit colour. In Display Properties > Settings, choose High Color (16 bit) instead of True Color (24 bit). |
 | Windows 98: "An exception 0E has occurred at 0028:… called from … in VxD DRVWQ117" at boot | Microsoft Backup's tape drive driver. Update Rehome, turn the VM off and run `rehome patch run VM --only win9x.tape_drivers` (or rename `DRVWQ117.VXD` and `DRVWPPQT.VXD` in `WINDOWS\SYSTEM\IOSUBSYS` to `.VXX` in Safe Mode). Rebuild an appliance afterwards. |
-| Windows 98 stays at a black screen with a blinking cursor after shutting down under KVM | QEMU does not write-protect the VGA BIOS under KVM, and Windows overwrites it at the end of its shutdown. Rehome 0.3.24 and later turn the VM off a few seconds later; Windows has saved everything by then. |
+| Windows 98 hangs when it shuts down under KVM: a black screen with a blinking cursor, or a screen full of identical vertical bars, and ScanDisk runs at the next start | QEMU does not write-protect the BIOS area under KVM, and Windows uses it as free memory, overwriting the VGA BIOS. Update Rehome, turn the VM off and run `rehome patch run VM --only win9x.emm_exclude` (it adds `EMMExclude=C000-EFFF` to SYSTEM.INI). Until then, emulation shuts Windows 98 down cleanly. |
 | Windows 95/98: "While initializing device NDIS: Windows protection error" | The CPU is too fast for a timing loop in NDIS.VXD, even under emulation on a fast computer. Update Rehome, turn the VM off and run `rehome patch run VM --only win9x.cpu_speed`. Rebuild an appliance afterwards: it carries a copy of the disk. |
 | Windows 95/98 stays at "It's now safe to turn off your computer" | Rehome 0.3.18 and later turn the VM off a few seconds after that screen appears. If it stays on, send `rehome diagnostics VM` from that screen: it shows where the processor stopped (and the VM's `watch.log`). Adding "Advanced Power Management support" in Windows is not needed, and it can hang Windows 98 while it boots. |
 | The mouse cursor does not move in DOS or Windows 9x (Rehome 0.3.8 and older) | Update Rehome. Older versions treated a PS/2 mouse as absolute, so the cursor never moved. |

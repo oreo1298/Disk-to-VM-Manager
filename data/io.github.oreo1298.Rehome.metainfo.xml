@@ -34,6 +34,11 @@
     <control>pointing</control>
   </supports>
   <releases>
+    <release version="0.3.26" date="2026-11-19">
+      <description>
+        <p>Windows 95/98/Me: Windows' memory manager is kept out of the BIOS area, which QEMU leaves writable under KVM; Windows 98 overwrote its VGA BIOS there and hung at shutdown.</p>
+      </description>
+    </release>
     <release version="0.3.25" date="2026-11-19">
       <description>
         <p>Windows 98/Me: Microsoft Backup's tape drive drivers are turned off as Microsoft advises; they crashed Windows 98 at boot once it found the VM's disk controller and ports.</p>

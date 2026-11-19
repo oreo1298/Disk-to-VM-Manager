@@ -250,6 +250,45 @@ def ram_limit(ctx) -> PatchResult:
     return PatchResult("", "", "not-needed", f"{m.memory_mib} MiB is within the safe limit.")
 
 
+# Upper memory Windows' memory manager must leave alone: everything SeaBIOS write-protects
+# after POST, from the VGA BIOS at C0000 to its own code below F0000. Under KVM that
+# protection does not hold (D49), and Windows then takes pages there for itself (D53).
+EMM_EXCLUDE = "C000-EFFF"
+
+
+@patch("win9x.emm_exclude", "Keep Windows' memory manager out of the BIOS area",
+       families=("win9x",))
+def emm_exclude(ctx) -> PatchResult:
+    """SYSTEM.INI [386Enh] EMMExclude=C000-EFFF, as video drivers add for their BIOS.
+
+    Windows 9x uses upper-memory pages it finds writable and unused. Under emulation, and
+    on real chipsets, the shadowed BIOS area cannot be written, so Windows leaves it alone.
+    Under KVM QEMU leaves it writable, and Windows 98 put a 32 KB text-screen buffer over
+    the VGA BIOS: it hung at shutdown, before writing its disk cache back (D53)."""
+    g = ctx.g
+    windir = ctx.os.details.get("windir", "/WINDOWS")
+    line = f"EMMExclude={EMM_EXCLUDE}"
+    with mounted(g, ctx.root, readonly=False):
+        path = ci_path(g, f"{windir}/SYSTEM.INI")
+        if not path:
+            return PatchResult("", "", "skipped", "SYSTEM.INI not found.")
+        text = g.read_file(path).decode("latin-1")
+        if re.search(rf"^[ \t]*EMMExclude[ \t]*=[ \t]*{EMM_EXCLUDE}[ \t]*\r?$", text,
+                     re.MULTILINE | re.IGNORECASE):
+            return PatchResult("", "", "not-needed", f"SYSTEM.INI already has {line}.")
+        text, found = re.subn(r"(^\[386Enh\][^\n]*(?:\n|\Z))",
+                              lambda m: m.group(1) + ("" if m.group(1).endswith("\n") else "\r\n")
+                              + line + "\r\n", text, count=1, flags=re.MULTILINE | re.IGNORECASE)
+        if not found:
+            text = text.rstrip("\r\n") + f"\r\n\r\n[386Enh]\r\n{line}\r\n"
+        g.write(path, text.encode("latin-1"))
+    return PatchResult("", "", "applied",
+                       "Windows 9x takes upper-memory pages it finds writable for itself. Under "
+                       "KVM QEMU does not write-protect the BIOS area, and Windows 98 overwrote "
+                       "the VGA BIOS there, then hung when it shut down. Excluded as video "
+                       "drivers do for their own BIOS.", [f"{path}: [386Enh] {line}"])
+
+
 @patch("win9x.vcache_limit", "Cap the disk cache (vcache)", families=("win9x",))
 def vcache_limit(ctx) -> PatchResult:
     """Windows 98/Me crash with "insufficient memory" when vcache grows past ~512 MiB."""

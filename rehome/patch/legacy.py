@@ -89,6 +89,13 @@ def win9x_report(ctx) -> PatchResult:
         msg += " It runs under emulation to avoid the fast-CPU \"Windows protection error\"."
     if m.cpu_quota_pct:
         msg += f" Windows 9x never idles the CPU, so the VM is capped at {m.cpu_quota_pct}% of one core."
+    # SeaBIOS's Plug and Play BIOS is a stub (only the BBS call), so Windows' PnP BIOS
+    # enumerator fails and reports no PCI bus. Windows' setup finds it by detection; a
+    # system installed on other hardware has to run that detection once (D50).
+    msg += (" If Windows was installed on other hardware and Device Manager lists little more than "
+            "\"Plug and Play BIOS\" (with a warning) and \"System board\", run Control Panel > "
+            "Add New Hardware once and let Windows search: it then finds the PCI bus and these "
+            "devices and installs its own drivers.")
     return PatchResult("", "", "info", msg)
 
 

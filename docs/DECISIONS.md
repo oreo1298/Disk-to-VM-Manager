@@ -1646,3 +1646,38 @@ would like KVM for its speed.
     within seconds.
 - Emulation stays the default for Windows 98, with KVM a choice (D48).
   Under emulation Windows ends its shutdown the ordinary way.
+- Confirmed on the reporter's VM: under KVM, Windows 98 now shuts down and
+  the VM turns itself off.
+
+## D50. Windows 9x installed elsewhere: Windows' own detection finds the VM's hardware
+
+- Reported after D49, on the same imported Windows 98: Device Manager lists
+  only "Dial-Up Adapter", "Plug and Play BIOS" with a warning, and "System
+  board". There is no display adapter, disk controller, sound or network
+  card. The desktop runs in mode 12h (640x480, 16 colours: the BIOS data
+  area in the D49 reports).
+- Cause: SeaBIOS's Plug and Play BIOS is a stub (`src/pnpbios.c`). It
+  answers only the BBS call 0x60 and returns "function not supported" for
+  everything else. Windows' PnP BIOS enumerator therefore fails (the
+  warning) and reports no motherboard devices, so there is no PCI bus and
+  nothing on it. On a fresh install under QEMU, Windows' setup finds the
+  PCI bus by legacy detection. A system installed on other hardware never
+  ran that detection here.
+- Fix: run Windows' own detection once (Control Panel, Add New Hardware,
+  let it search), then restart. It finds the PCI bus and then the
+  devices Rehome chose for Windows 9x, which Windows has built-in drivers
+  for:
+  - Intel PIIX IDE (32-bit disk access instead of MS-DOS compatibility
+    mode),
+  - Cirrus Logic 5446 (higher resolutions and colours),
+  - AMD PCnet,
+  - Sound Blaster 16,
+  - PIIX3 USB.
+  Windows may ask for its CD (the user's own) or find its CAB files in
+  `WINDOWS\OPTIONS\CABS`.
+- Rehome cannot do this offline: it has no writer for the Windows 9x
+  registry (SYSTEM.DAT), and the detection is Windows' own code. So the
+  import report (`win9x.report`) and the README's troubleshooting table
+  say when and how to run it.
+- A full Plug and Play BIOS would need Rehome to build and ship its own
+  SeaBIOS. That is not worth it while Windows' detection does the job.

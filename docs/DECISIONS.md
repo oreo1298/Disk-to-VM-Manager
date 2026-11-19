@@ -1573,3 +1573,48 @@ would like KVM for its speed.
     - the bytes at physical C0000 (55 AA if intact) and behind CS:EIP
       (`xp`),
     - QEMU's map of A0000-CFFFF ("rom" is write-protected).
+
+## D49. Windows 98 under KVM: QEMU does not write-protect the BIOS shadow
+
+- 0.3.23's reports from the reporter's VM (KVM, cirrus-vga) settle D48's
+  question: the VGA BIOS is overwritten, not mapped away.
+  - At the desktop, physical C0000 holds the VGA BIOS (`55 AA 46 E9 …`).
+    QEMU's map shows C0000-C9FFF as "rom".
+  - At the shutdown hang, physical C0000 and C1DCE hold `20 07 20 07 …`,
+    which are blank text cells. The map still says "rom". Linear
+    C0000-C7FFF maps 1:1, so the processor runs the overwritten BIOS.
+- Why only under KVM: the BIOS shadow (C0000-FFFFF) is RAM behind the
+  i440FX PAM registers. SeaBIOS makes it read-only after POST. QEMU models
+  "read-only" as a read-only alias of `pc.ram`
+  (`hw/pci-host/pam.c`: "ROM (XXX: not quite correct)").
+  - TCG drops stores to read-only sections (`accel/tcg/cputlb.c`:
+    `section->readonly` sets `TLB_DISCARD_WRITE`). Real chipsets drop
+    them too.
+  - KVM takes a memory slot's protection from the memory region, not the
+    section (`kvm_set_phys_mem` and `kvm_mem_flags(section->mr)` in
+    `accel/kvm/kvm-all.c`). `pc.ram` is writable, so the slot is
+    writable and the guest's stores land.
+  - A 2019 RFC ("accel/kvm: respect section RO flag when mapping phys
+    mem") and a 2022 series for full PAM emulation were never merged.
+    QEMU's master branch, read for this entry, is unchanged.
+- So Windows 98 writes text cells (0x0720) into the VGA BIOS at shutdown,
+  a write that real hardware and TCG silently drop. The VGA BIOS is in the
+  middle of the text-mode set that follows the shutdown logo (the BIOS
+  data area still says mode 13h). It then runs those cells.
+  - Which Windows component writes is not known. The timing points to the
+    display virtualisation (VDD) remapping the VM's video memory.
+- QEMU's command line cannot change this. Every PAM range is plain RAM to
+  KVM, and the VGA BIOS has to be at C0000, where SeaBIOS copies it into
+  the shadow. A VGA BIOS laid out to survive the write is not possible
+  either: its code, data and fonts must share the 64 KB C000 segment.
+- Others found a workaround without knowing the cause (qemu-discuss, 2021;
+  the qemu-3dfx wiki's "workaround KVM/WHPX reboot/shutdown"): run an
+  MS-DOS session full screen once after Windows starts. Their version is a
+  startup PIF on a two-line batch file, set to "Full-screen" and "Close on
+  exit".
+  - Plan: confirm it by hand on the reporter's VM first. If it holds,
+    Rehome adds it as a Windows 9x patch.
+  - If it does not hold, the fallback is for the watcher (D45) to power
+    off a VM in this exact state. That is safe only if Windows has
+    already flushed its disks, i.e. ScanDisk does not run on the next
+    start.
